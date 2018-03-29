@@ -24,10 +24,12 @@ class Config(object):
 
     # hyper parameters for model architecture.
     cardinality = 8  # how many split ?
-    blocks = 3  # res_block ! (split + transition)
+    num_block = 3  # res_block ! (split + transition)
     depth = 64  # out channel
     reduction_ratio = 4
-    out_dims = [64, 128, 256]
+
+    # the filter depths of the convolution blocks.
+    out_dims = [64, 64, 128, 256]
 
     # hyper parameters for training task.
     total_epochs = 100
@@ -61,12 +63,12 @@ def Evaluate(sess, image_test, label_test, test_batch_size):
 
 
 class SE_ResNeXt(object):
-    def __init__(self, x, blocks, depth, out_dims, cardinality,
+    def __init__(self, x, num_block, depth, out_dims, cardinality,
                  reduction_ratio, is_training):
         self.is_training = is_training
         self.out_dims = out_dims
         self.cardinality = cardinality
-        self.blocks = blocks
+        self.num_block = num_block
         self.depth = depth
         self.reduction_ratio = reduction_ratio
 
@@ -86,86 +88,84 @@ class SE_ResNeXt(object):
                 lambda: batch_norm(inputs=x, is_training=is_training, reuse=None),
                 lambda: batch_norm(inputs=x, is_training=is_training, reuse=True))
 
-    def conv_bn_layer(self, x, filter, kernel, stride, scope, padding="same"):
+    def conv_bn_layer(self,
+                      x,
+                      filters,
+                      filter_size,
+                      stride,
+                      scope,
+                      padding="same"):
         with tf.name_scope(scope):
             x = tf.layers.conv2d(
                 inputs=x,
-                use_bias=False,
-                filters=filter,
-                kernel_size=kernel,
+                filters=filters,
+                kernel_size=filter_size,
                 strides=stride,
-                padding=padding)
+                padding=padding,
+                use_bias=False)
             x = self.batch_norm(
                 x, is_training=self.is_training, scope=scope + "_batch1")
             return tf.nn.relu(x)
 
     def transform_layer(self, x, stride, depth, scope):
-        with tf.name_scope(scope):
-            x = tf.layers.conv2d(
-                x,
-                use_bias=False,
-                filters=depth,
-                kernel_size=1,
-                strides=1,
-                padding="same")
-            x = self.batch_norm(
-                x, is_training=self.is_training, scope=scope + "_batch1")
-            x = tf.nn.relu(x)
-
-            x = tf.layers.conv2d(
-                x,
-                use_bias=False,
-                filters=depth,
-                kernel_size=3,
-                strides=stride,
-                padding="same")
-            x = self.batch_norm(
-                x, is_training=self.is_training, scope=scope + "_batch2")
-            return tf.nn.relu(x)
-
-    def transition_layer(self, x, out_dim, scope):
-        with tf.name_scope(scope):
-            x = tf.layers.conv2d(
-                x,
-                use_bias=False,
-                filters=out_dim,
-                kernel_size=1,
-                strides=1,
-                padding="same")
-            x = self.batch_norm(
-                x, is_training=self.is_training, scope=scope + "_batch1")
-            return tf.nn.relu(x)
+        x = self.conv_bn_layer(
+            x,
+            filters=depth,
+            filter_size=1,
+            stride=1,
+            padding="same",
+            scope=scope + "_trans1")
+        return self.conv_bn_layer(
+            x,
+            filters=depth,
+            filter_size=3,
+            stride=stride,
+            padding="same",
+            scope=scope + "_trans2")
 
     def split_layer(self, input_x, stride, depth, layer_name, cardinality):
         with tf.name_scope(layer_name):
-            layers_split = list()
+            layer_splits = []
             for i in range(cardinality):
-                splits = self.transform_layer(input_x, stride, depth,
-                                              layer_name + "_splitN_" + str(i))
-                layers_split.append(splits)
+                layer_splits.append(
+                    self.transform_layer(input_x, stride, depth,
+                                         layer_name + "_splitN_" + str(i)))
+            return tf.concat(layer_splits, axis=3)  # concatenate along channel
 
-            return tf.concat(layers_split, axis=3)
+    def transition_layer(self, x, out_dim, scope):
+        """A 1 x 1 convolution.
+        """
 
-    def squeeze_excitation_layer(self, input_x, out_dim, ratio, layer_name):
+        return self.conv_bn_layer(
+            x,
+            filters=out_dim,
+            filter_size=1,
+            stride=1,
+            padding="same",
+            scope=scope)
+
+    def squeeze_excitation_layer(self, input_x, out_dim, reduction_ratio,
+                                 layer_name):
         with tf.name_scope(layer_name):
 
-            squeeze = global_avg_pool(input_x)
-            excitation = tf.layers.dense(
-                squeeze,
+            pool = global_avg_pool(input_x)
+            squeeze = tf.layers.dense(
+                pool,
                 use_bias=False,
-                units=out_dim / ratio,
+                units=out_dim / reduction_ratio,
             )
-            excitation = tf.nn.relu(excitation)
+            squeeze = tf.nn.relu(squeeze)
             excitation = tf.layers.dense(
-                excitation, units=out_dim, use_bias=False)
+                squeeze, units=out_dim, use_bias=False)
             excitation = tf.nn.sigmoid(excitation)
 
             excitation = tf.reshape(excitation, [-1, 1, 1, out_dim])
             return input_x * excitation
 
     def residual_layer(self, input_x, out_dim, layer_num, cardinality, depth,
-                       reduction_ratio, blocks):
-        for i in range(blocks):
+                       reduction_ratio, num_block):
+        for i in range(num_block):
+            # The input here must follow channel last format
             input_dim = int(np.shape(input_x)[-1])
 
             if input_dim * 2 == out_dim:
@@ -189,7 +189,7 @@ class SE_ResNeXt(object):
             x = self.squeeze_excitation_layer(
                 x,
                 out_dim=out_dim,
-                ratio=reduction_ratio,
+                reduction_ratio=reduction_ratio,
                 layer_name="squeeze_layer_" + layer_num + "_" + str(i))
 
             if flag is True:
@@ -204,13 +204,17 @@ class SE_ResNeXt(object):
 
     def build_SEnet(self, input_x):
         input_x = self.conv_bn_layer(
-            input_x, filter=64, kernel=3, stride=1, scope="first_layer")
+            input_x,
+            filters=self.out_dims[0],
+            filter_size=3,
+            stride=1,
+            scope="first_layer")
 
-        for i, out_dim in enumerate(self.out_dims):
+        for i, out_dim in enumerate(self.out_dims[1:]):
             x = self.residual_layer(
                 (x if i else input_x),
                 out_dim=out_dim,
-                blocks=self.blocks,
+                num_block=self.num_block,
                 depth=self.depth,
                 cardinality=self.cardinality,
                 reduction_ratio=self.reduction_ratio,
@@ -238,7 +242,7 @@ def train(conf):
     # Step 3: Build the network.
     logits = SE_ResNeXt(
         images,
-        conf.blocks,
+        conf.num_block,
         conf.depth,
         conf.out_dims,
         conf.cardinality,
@@ -264,7 +268,7 @@ def train(conf):
 
     # Step 5: Begin training and testing tasks.
     saver = tf.train.Saver(tf.global_variables())
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
         ckpt = tf.train.get_checkpoint_state("./model")
         if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -272,7 +276,6 @@ def train(conf):
             sess.run(tf.global_variables_initializer())
 
         epoch_learning_rate = conf.init_learning_rate
-
         for epoch in range(1, conf.total_epochs + 1):
             if epoch % 30 == 0:
                 epoch_learning_rate = epoch_learning_rate / 10
