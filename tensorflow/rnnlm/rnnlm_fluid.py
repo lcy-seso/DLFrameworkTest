@@ -11,9 +11,8 @@ from load_data_fluid import train_data
 
 class LMConfig(object):
     """Configuration of the RNN language model"""
-
     vocab_size = 10000
-    batch_size = 16
+    batch_size = 64
 
     embedding_dim = 64
     hidden_dim = 128
