@@ -23,7 +23,7 @@ class LMConfig(object):
     learning_rate = 0.001
 
     parallel = False
-    use_gpu = False
+    use_gpu = True
 
     num_passes = 5
 
