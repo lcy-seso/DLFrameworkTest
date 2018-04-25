@@ -10,10 +10,10 @@ from config import ModelConfig
 from data_utils import load_tag_dict
 
 
-class NER_net:
+class NER_net(object):
     def __init__(self, iterator, config, scope_name="ner_net"):
         self.iterator = iterator
-        self.config = conf
+        self.config = config
 
         with tf.variable_scope(scope_name) as scope:
             self.__build_net()
@@ -87,13 +87,13 @@ def train(net, iterator, config, sess):
             if current_batch and current_epoch % 10 == 0:
                 print("Epoch %d, Batch %d Loss %.5f" % (current_epoch,
                                                         current_batch, losses))
-                save_path = os.path.join(os.getcwd(), config.model_path,
+                save_path = os.path.join(os.getcwd(), config.tf_model_path,
                                          "model.ckpt")
                 saver.save(sess, save_path)
 
         except tf.errors.OutOfRangeError:
             saver.save(sess,
-                       os.path.join(os.getcwd(), config.model_path,
+                       os.path.join(os.getcwd(), config.tf_model_path,
                                     "model.ckpt"))
 
             current_epoch += 1
@@ -107,8 +107,8 @@ def train(net, iterator, config, sess):
 
 def predict(conf, net, tag_dict, sess):
     saver = tf.train.import_meta_graph(
-        os.path.join(conf.model_path, "model.ckpt.meta"))
-    saver.restore(sess, tf.train.latest_checkpoint(conf.model_path))
+        os.path.join(conf.tf_model_path, "model.ckpt.meta"))
+    saver.restore(sess, tf.train.latest_checkpoint(conf.tf_model_path))
 
     while True:
         try:
