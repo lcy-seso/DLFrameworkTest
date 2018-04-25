@@ -11,7 +11,6 @@ from load_data_fluid import train_data
 
 class LMConfig(object):
     """Configuration of the RNN language model"""
-
     vocab_size = 10000
     batch_size = 64
 
@@ -22,8 +21,8 @@ class LMConfig(object):
 
     learning_rate = 0.001
 
-    parallel = False
-    use_gpu = True
+    parallel = True
+    use_gpu = False
 
     num_passes = 5
 

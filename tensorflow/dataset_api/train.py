@@ -19,6 +19,8 @@ def train():
     config = tf.ConfigProto()
     config.log_device_placement = True
     config.gpu_options.allow_growth = True
+    config.allow_soft_placement = True
+
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.tables_initializer())
