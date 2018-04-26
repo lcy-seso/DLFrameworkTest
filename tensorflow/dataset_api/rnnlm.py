@@ -1,29 +1,9 @@
 #!/usr/bin/env python
 #coding=utf-8
-import pdb
-
 import tensorflow as tf
 
 from utils import get_available_gpus
-
-
-class LMConfig(object):
-    """Configuration of language model"""
-    batch_size = 128 * 3
-    time_major = False
-
-    train_data_path = "data/ptb.train.txt"
-    vocab_file_path = "data/vocab.txt"
-    vocab_size = 10001
-    unk_id = 1
-
-    embedding_dim = 32
-    hidden_dim = 128
-    num_layers = 2
-
-    learning_rate = 1e-3
-
-    num_passes = 50
+from config import LMConfig
 
 
 class RNNLM(object):
@@ -110,8 +90,6 @@ class RNNLM(object):
             target_weights = tf.transpose(target_weights)
 
         return cross_entropy * target_weights
-        # return tf.reduce_sum(cross_entropy * target_weights) / tf.to_float(
-        #     self.batch_size)
 
     def optimize(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)

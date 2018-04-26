@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 #coding=utf-8
 
-import pdb
+import time
+
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 from rnnlm import LMConfig, RNNLM
 from dataset_api_example import get_dataset
+from timeline_utils import TimeLiner
+
+PROFILE = False
 
 
 def train():
@@ -15,6 +20,12 @@ def train():
         model_config.batch_size)
 
     model = RNNLM(model_config, curwd, nxtwd, nxtwd_len)
+
+    if PROFILE:
+        logfile = open("rnnlm_timeline.json", "w")
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        many_runs_timeline = TimeLiner()
 
     config = tf.ConfigProto()
     config.log_device_placement = True
@@ -28,19 +39,24 @@ def train():
 
         pass_id = 0
         batch_id = 0
+
         while True:
             try:
-                curwd_ids, nxtwd_ids, seq_len = sess.run(
-                    [curwd, nxtwd, nxtwd_len])
+                if pass_id == 1:
+                    start_time = time.time()
                 cost, _ = sess.run([model.cost, model.optim])
 
                 batch_id += 1
                 print("Pass %d, Batch %d, Loss %.4f" % (pass_id, batch_id,
                                                         cost))
             except tf.errors.OutOfRangeError:
-                if pass_id >= model_config.num_passes: break
-                sess.run(initializer)
+                if pass_id == 3:
+                    elapsed = time.time() - start_time
+                    print "Tim to train Three epoch: %.6f" % (elapsed)
+
                 pass_id += 1
+                if pass_id == model_config.num_passes: break
+                sess.run(initializer)
                 batch_id = 0
                 continue
 
