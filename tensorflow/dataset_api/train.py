@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 #coding=utf-8
 
-import pdb
+import time
+
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 from rnnlm import LMConfig, RNNLM
 from dataset_api_example import get_dataset
+from timeline_utils import TimeLiner
+
+PROFILE = True
 
 
 def train():
@@ -16,9 +21,21 @@ def train():
 
     model = RNNLM(model_config, curwd, nxtwd, nxtwd_len)
 
+    if PROFILE:
+        """
+        This is for profiling only. Do not use this in normal training
+        because it harms the time performance.
+        """
+
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        many_runs_timeline = TimeLiner()
+
     config = tf.ConfigProto()
     config.log_device_placement = True
     config.gpu_options.allow_growth = True
+    config.allow_soft_placement = False
+
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.tables_initializer())
@@ -26,19 +43,45 @@ def train():
 
         pass_id = 0
         batch_id = 0
+
         while True:
             try:
-                curwd_ids, nxtwd_ids, seq_len = sess.run(
-                    [curwd, nxtwd, nxtwd_len])
-                cost, _ = sess.run([model.cost, model.optim])
+                if pass_id == 1:
+                    start_time = time.time()
+
+                if PROFILE:
+                    if batch_id >= 1:
+                        cost, _ = sess.run([model.cost, model.optim])
+                    else:
+                        cost, _ = sess.run(
+                            [model.cost, model.optim],
+                            options=options,
+                            run_metadata=run_metadata)
+
+                        fetched_timeline = timeline.Timeline(
+                            run_metadata.step_stats)
+                        chrome_trace = \
+                                fetched_timeline.generate_chrome_trace_format()
+                        many_runs_timeline.update_timeline(chrome_trace)
+                else:
+                    cost, _ = sess.run([model.cost, model.optim])
 
                 batch_id += 1
                 print("Pass %d, Batch %d, Loss %.4f" % (pass_id, batch_id,
                                                         cost))
+                if batch_id == 3:
+                    if PROFILE:
+                        many_runs_timeline.save("rnn_lm_timeline.json")
+                    break
+
             except tf.errors.OutOfRangeError:
-                if pass_id >= model_config.num_passes: break
-                sess.run(initializer)
+                if pass_id == 3:
+                    elapsed = time.time() - start_time
+                    print "Tim to train Three epoch: %.6f" % (elapsed)
+
                 pass_id += 1
+                if pass_id == model_config.num_passes: break
+                sess.run(initializer)
                 batch_id = 0
                 continue
 
