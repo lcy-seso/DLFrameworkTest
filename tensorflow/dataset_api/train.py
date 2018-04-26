@@ -10,7 +10,7 @@ from rnnlm import LMConfig, RNNLM
 from dataset_api_example import get_dataset
 from timeline_utils import TimeLiner
 
-PROFILE = False
+PROFILE = True
 
 
 def train():
@@ -22,7 +22,11 @@ def train():
     model = RNNLM(model_config, curwd, nxtwd, nxtwd_len)
 
     if PROFILE:
-        logfile = open("rnnlm_timeline.json", "w")
+        """
+        This is for profiling only. Do not use this in normal training
+        because it harms the time performance.
+        """
+
         options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
         many_runs_timeline = TimeLiner()
@@ -44,11 +48,32 @@ def train():
             try:
                 if pass_id == 1:
                     start_time = time.time()
-                cost, _ = sess.run([model.cost, model.optim])
+
+                if PROFILE:
+                    if batch_id >= 1:
+                        cost, _ = sess.run([model.cost, model.optim])
+                    else:
+                        cost, _ = sess.run(
+                            [model.cost, model.optim],
+                            options=options,
+                            run_metadata=run_metadata)
+
+                        fetched_timeline = timeline.Timeline(
+                            run_metadata.step_stats)
+                        chrome_trace = \
+                                fetched_timeline.generate_chrome_trace_format()
+                        many_runs_timeline.update_timeline(chrome_trace)
+                else:
+                    cost, _ = sess.run([model.cost, model.optim])
 
                 batch_id += 1
                 print("Pass %d, Batch %d, Loss %.4f" % (pass_id, batch_id,
                                                         cost))
+                if batch_id == 3:
+                    if PROFILE:
+                        many_runs_timeline.save("rnn_lm_timeline.json")
+                    break
+
             except tf.errors.OutOfRangeError:
                 if pass_id == 3:
                     elapsed = time.time() - start_time
