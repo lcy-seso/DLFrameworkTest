@@ -45,17 +45,17 @@
 
 ## Some interesting findings
 
-When I use TensorFlow timeline to profile the time performance to find out why there is almost no acceleration when using 3 GPU cards comparing to using 2 cards.
+When I use TensorFlow timeline to profile the time performance to find out why there is almost no acceleration when using 3 GPU cards with comparison to using 2 cards.
 
 <p align="center">
 <img src="images/timeline_for_3_cards.png" width=1000><br/>
 </p>
 
-**TensorFlow automatically place the "Softmax" (here when talking about "Softmax" I also include the pre-softmax projection.) to one GPU cards even if in the codes it should be run on all the three cards.** All the cards have to wait GPU 0 finish the softmax computation (forward and backward). This is strange.
+**TensorFlow automatically place the "Softmax" (here when talking about "Softmax" I also include the pre-softmax projection.) to one GPU cards even if in the codes it should be run on all the three cards.** All the cards have to wait GPU 0 finish the softmax computation (forward and backward). **This is strange. Why this hanppen?**
 
 >I guess this is because I set [`config.allow_soft_placement = True`]( https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/dataset_api/train.py#L37`) . Unfortunately, this flag has to be set to `True`, otherwise user has to explictly place each operator on an appropriate device and some control flow operator dose not have a GPU kernel. This mannul placement will be too tedious.
 
 ## Some other notes:
 
 - I compile TensorFlow r1.5 without NCCL support. From the timeline, it seems that tensorflow uses `gather` to merge gradients.
-- Applying parameter updates only be done in the main GPU cards (card 0). Theoretically this can also be done in parallel.
+- Applying parameter updates only be done in the main GPU card (card 0). Theoretically this can also be done in parallel.
