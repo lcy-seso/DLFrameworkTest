@@ -87,10 +87,6 @@ def train(net, iterator, config, sess):
             if current_batch and current_epoch % 10 == 0:
                 print("Epoch %d, Batch %d Loss %.5f" % (current_epoch,
                                                         current_batch, losses))
-                save_path = os.path.join(os.getcwd(), config.tf_model_path,
-                                         "model.ckpt")
-                saver.save(sess, save_path)
-
         except tf.errors.OutOfRangeError:
             saver.save(sess,
                        os.path.join(os.getcwd(), config.tf_model_path,

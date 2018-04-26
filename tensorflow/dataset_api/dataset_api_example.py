@@ -17,9 +17,10 @@ def get_dataset(file_name,
                 bos_token="<bos>",
                 eos_token="<eos>",
                 num_parallel_calls=4,
-                num_buckets=5,
+                num_buckets=1,
                 output_buffer_size=102400):
     dataset = tf.data.TextLineDataset(file_name)
+
     dataset = dataset.shuffle(
         buffer_size=output_buffer_size, reshuffle_each_iteration=True)
 
