@@ -3,6 +3,11 @@
     hooks:
     -   id: yapf
         files: \.py$
+-   repo: https://github.com/pre-commit/mirrors-pylint
+    sha: 94dd4c8ad3f926ed338c7d1f3a103cbe3ce851ba
+    hooks:
+    -   id: pylint
+        files: \.py$
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     sha: a11d9314b22d8f8c7556443875b731ef05965464
     hooks:
