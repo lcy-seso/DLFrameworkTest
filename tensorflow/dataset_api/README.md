@@ -23,7 +23,7 @@
 
 ### Test 2: Fix batch size per card
 
->**This is often the situation when using the multiple GPU cards that relatively increase the total batch size.**
+>**This is often the situation when using the multiple GPU cards: increase the total batch size.**
 
 - This will lead to a very large batch size which potentially (sligthly) harm the learning performance (not always the truth, need carefully tune the hyper parameters.)
 - A large batch size means in one epoch forward-backward computation will become less (less parameter updates). The overall computations are slightly reduced.
@@ -51,7 +51,9 @@ When I use TensorFlow timeline to profile the time performance to find out why t
 <img src="images/timeline_for_3_cards.png" width=1000><br/>
 </p>
 
-**TensorFlow automatically place the "Softmax" (here when talking about "Softmax" I also include the pre-softmax projection.) to one GPU cards even if in the codes it should be run on all the three cards.** All the cards have to wait GPU 0 finish the softmax computation (forward and backward). **This is strange. Why this hanppen?**
+**TensorFlow automatically place the "Softmax" (here when talking about "Softmax" I also include the pre-softmax projection.) to one GPU cards even if in the codes it should be run on all the three cards.** All the cards have to wait GPU 0 to finish the softmax computation (forward and backward).
+
+ **This is strange. Why this happens, I not sure. Need to check**.
 
 >I guess this is because I set [`config.allow_soft_placement = True`]( https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/dataset_api/train.py#L37`) . Unfortunately, this flag has to be set to `True`, otherwise user has to explictly place each operator on an appropriate device and some control flow operator dose not have a GPU kernel. This mannul placement will be too tedious.
 
