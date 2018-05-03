@@ -10,7 +10,7 @@ from rnnlm import LMConfig, RNNLM
 from dataset_api_example import get_dataset
 from timeline_utils import TimeLiner
 
-PROFILE = True
+PROFILE = False
 
 
 def train():
@@ -21,6 +21,8 @@ def train():
 
     model = RNNLM(model_config, curwd, nxtwd, nxtwd_len)
 
+    options = None
+    run_metadata = None
     if PROFILE:
         """
         This is for profiling only. Do not use this in normal training
@@ -34,7 +36,7 @@ def train():
     config = tf.ConfigProto()
     config.log_device_placement = True
     config.gpu_options.allow_growth = True
-    config.allow_soft_placement = False
+    config.allow_soft_placement = True
 
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
@@ -46,38 +48,31 @@ def train():
 
         while True:
             try:
-                if pass_id == 1:
-                    start_time = time.time()
+                start_time = time.time()
+
+                cost, _ = sess.run(
+                    [model.cost, model.optim],
+                    options=options,
+                    run_metadata=run_metadata)
 
                 if PROFILE:
-                    if batch_id >= 1:
-                        cost, _ = sess.run([model.cost, model.optim])
-                    else:
-                        cost, _ = sess.run(
-                            [model.cost, model.optim],
-                            options=options,
-                            run_metadata=run_metadata)
-
-                        fetched_timeline = timeline.Timeline(
-                            run_metadata.step_stats)
-                        chrome_trace = \
-                                fetched_timeline.generate_chrome_trace_format()
-                        many_runs_timeline.update_timeline(chrome_trace)
-                else:
-                    cost, _ = sess.run([model.cost, model.optim])
+                    fetched_timeline = timeline.Timeline(
+                        run_metadata.step_stats)
+                    chrome_trace = \
+                            fetched_timeline.generate_chrome_trace_format()
+                    many_runs_timeline.update_timeline(chrome_trace)
 
                 batch_id += 1
                 print("Pass %d, Batch %d, Loss %.4f" % (pass_id, batch_id,
                                                         cost))
-                if batch_id == 3:
-                    if PROFILE:
-                        many_runs_timeline.save("rnn_lm_timeline.json")
+                if PROFILE and batch_id == 3:
+                    many_runs_timeline.save("rnn_lm_timeline.json")
                     break
 
             except tf.errors.OutOfRangeError:
                 if pass_id == 3:
                     elapsed = time.time() - start_time
-                    print "Tim to train Three epoch: %.6f" % (elapsed)
+                    print "Time to train Three epoch: %.6f" % (elapsed)
 
                 pass_id += 1
                 if pass_id == model_config.num_passes: break
