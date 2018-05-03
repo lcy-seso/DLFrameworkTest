@@ -20,8 +20,8 @@ def get_dataset(file_name,
                 output_buffer_size=102400):
     dataset = tf.data.TextLineDataset(file_name)
 
-    dataset = dataset.shuffle(
-        buffer_size=output_buffer_size, reshuffle_each_iteration=True)
+    # dataset = dataset.shuffle(
+    #     buffer_size=output_buffer_size, reshuffle_each_iteration=True)
 
     curwd_nxtwd_dataset = tf.data.Dataset.zip((dataset, dataset))
     curwd_nxtwd_dataset = curwd_nxtwd_dataset.map(
