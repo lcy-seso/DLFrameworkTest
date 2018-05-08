@@ -7,7 +7,10 @@ import tensorflow as tf
 from tensorflow.contrib.seq2seq import *
 from tensorflow.python.layers.core import Dense
 
-from iterator_helper import get_iterator
+__all__ = [
+    "Seq2SeqModel",
+    "hparams",
+]
 
 hparams = tf.contrib.training.HParams(
     src_file_name="data/train.en",
@@ -35,7 +38,7 @@ hparams = tf.contrib.training.HParams(
     forget_bias=1.,
     embedding_dim=512,
     encoder_type="bi",
-    num_encoder_layers=2,
+    num_encoder_layers=2 * 2,
     num_decoder_layers=2,
     optimizer="adam",
     learning_rate=0.001,
@@ -342,10 +345,3 @@ class Seq2SeqModel(object):
         if time_major:
             target_weights = tf.transpose(target_weights)
         return tf.reduce_sum(crossent * target_weights)
-
-
-if __name__ == "__main__":
-    iterator = get_iterator(hparams.src_file_name, hparams.tgt_file_name,
-                            hparams.src_vocab_file, hparams.tgt_vocab_file,
-                            hparams.batch_size)
-    model = Seq2SeqModel(iterator, hparams)
