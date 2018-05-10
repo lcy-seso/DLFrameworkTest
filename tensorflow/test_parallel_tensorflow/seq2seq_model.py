@@ -28,7 +28,8 @@ hparams = tf.contrib.training.HParams(
     num_buckets=5,
     output_buffer_size=None,
     disable_shuffle=False,
-    batch_size=16,
+    # when using multi-gpu cards, this means bath size per card.
+    batch_size=80,
 
     # hyper parameters for model topology
     time_major=False,
@@ -38,8 +39,10 @@ hparams = tf.contrib.training.HParams(
     forget_bias=1.,
     embedding_dim=512,
     encoder_type="bi",
-    num_encoder_layers=2 * 2,
-    num_decoder_layers=2,
+    num_encoder_layers=4,
+    # TODO(caoying) The current implementation requries encoder and decoder has
+    # the same number RNN cells.
+    num_decoder_layers=4,
     optimizer="adam",
     learning_rate=0.001,
     num_keep_ckpts=5,
@@ -47,7 +50,10 @@ hparams = tf.contrib.training.HParams(
 
 
 class Seq2SeqModel(object):
-    def __init__(self, iterator, hparams,
+    def __init__(self,
+                 gpu_num,
+                 iterator,
+                 hparams,
                  mode=tf.contrib.learn.ModeKeys.TRAIN):
         self.iterator = iterator
         self.mode = mode
@@ -58,11 +64,27 @@ class Seq2SeqModel(object):
         self.source_sequence_length = iterator.source_sequence_length
         self.target_sequence_length = iterator.target_sequence_length
 
-        self.batch_size = tf.size(self.source_sequence_length)
+        self.batch_size = tf.reduce_sum(self.target_sequence_length)
 
-        self.logits, self.loss, self.final_context_state = self.build_graph(
-            self.source, self.target_input, self.target_output,
-            self.source_sequence_length, self.target_sequence_length, hparams)
+        if gpu_num > 1:
+            res = self._make_parallel(
+                self.build_graph,
+                gpu_num,
+                hparams=hparams,
+                source=self.source,
+                target_input=self.target_input,
+                target_output=self.target_output,
+                source_sequence_length=self.source_sequence_length,
+                target_sequence_length=self.target_sequence_length)
+
+            self.logits = res[0]
+            self.loss = res[1]
+            self.final_context_state = res[2]
+        else:
+            self.logits, self.loss, self.final_context_state = self.build_graph(
+                self.source, self.target_input, self.target_output,
+                self.source_sequence_length, self.target_sequence_length,
+                hparams)
 
         if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
             self.train_loss = self.loss / tf.to_float(self.batch_size)
@@ -102,6 +124,50 @@ class Seq2SeqModel(object):
 
         self.saver = tf.train.Saver(
             tf.global_variables(), max_to_keep=hparams.num_keep_ckpts)
+
+    def _merge_outputs(self, out_splits, device_str='/cpu:0'):
+        assert len(out_splits), "No output is given."
+
+        split_num = len(out_splits)
+        if split_num == 1: return out_splits[0]
+
+        out = []
+        output_num = len(out_splits[0])
+        for out_i in range(output_num):
+            out_i_splits = [out_splits[i][out_i] for i in range(split_num)]
+            with tf.device(device_str):
+                out.append(tf.add_n(out_i_splits))
+        return out
+
+    def _make_parallel(self, fn, gpu_num, **kwargs):
+        """ Wrapper for data parallelism.
+        """
+
+        in_splits = {}
+        for k, v in kwargs.items():
+            if isinstance(v, tf.Tensor):
+                in_splits[k] = tf.split(v, gpu_num)
+            else:
+                in_splits[k] = [v] * gpu_num
+
+        # FIXME(caoying) Temprorarily hard-code this for quick experiments.
+        # Need an elegant implementation.
+        target_output_splits = in_splits["target_output"]
+        in_splits["target_output"] = []
+        for i in range(gpu_num):
+            size = [-1, tf.reduce_max(in_splits["target_sequence_length"][i])]
+            in_splits["target_output"].append(
+                tf.slice(target_output_splits[i], [0, 0], size))
+
+        out_splits = []
+        for i in range(gpu_num):
+            with tf.device(tf.DeviceSpec(device_type="GPU", device_index=i)):
+                with tf.variable_scope(
+                        tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
+                    out_i = fn(**{k: v[i] for k, v in in_splits.items()})
+                    out_splits.append(out_i)
+
+        return self._merge_outputs(out_splits)
 
     def build_graph(self,
                     source,
@@ -183,7 +249,7 @@ class Seq2SeqModel(object):
                     forget_bias=forget_bias,
                     dropout=dropout,
                     mode=mode, ))
-        if len(cell_list) == 1:  # Single layer.
+        if num_layers == 1:  # Single layer.
             return cell_list[0]
         else:  # Multi layers
             return tf.contrib.rnn.MultiRNNCell(cell_list)
@@ -218,7 +284,7 @@ class Seq2SeqModel(object):
         with tf.variable_scope("encoder") as scope:
             encoder_emb_inp = tf.nn.embedding_lookup(source_embed, source)
 
-            # Encoder_outputs: [max_time, batch_size, num_units]
+            # Encoder_outputs: [batch_size, max_time, num_units]
             if hparams.encoder_type == "uni":
                 cell = self._build_rnn_cell(
                     num_layers=hparams.num_encoder_layers,
@@ -307,8 +373,7 @@ class Seq2SeqModel(object):
                     target_sequence_length,
                     time_major=hparams.time_major)
 
-                # Decoder
-                my_decoder = tf.contrib.seq2seq.BasicDecoder(
+                decoder = tf.contrib.seq2seq.BasicDecoder(
                     cell,
                     helper,
                     decoder_initial_state, )
@@ -316,7 +381,7 @@ class Seq2SeqModel(object):
                 # Dynamic decoding
                 (outputs, final_context_state,
                  _) = tf.contrib.seq2seq.dynamic_decode(
-                     my_decoder,
+                     decoder,
                      output_time_major=hparams.time_major,
                      swap_memory=True,
                      scope=decoder_scope)

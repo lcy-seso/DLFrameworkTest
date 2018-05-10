@@ -1,16 +1,21 @@
 #!/usr/bin/env python
 #coding=utf-8
+import pdb
 import tensorflow as tf
 
 from iterator_helper import get_iterator
 from seq2seq_model import Seq2SeqModel, hparams
 
+from utils import get_available_gpus
+
 
 def train():
+    gpu_num = len(get_available_gpus())
     iterator = get_iterator(hparams.src_file_name, hparams.tgt_file_name,
-                            hparams.src_vocab_file, hparams.tgt_vocab_file,
-                            hparams.batch_size)
-    model = Seq2SeqModel(iterator, hparams)
+                            hparams.src_vocab_file, hparams.tgt_vocab_file, (
+                                hparams.batch_size * gpu_num
+                                if gpu_num > 1 else hparams.batch_size))
+    model = Seq2SeqModel(gpu_num, iterator, hparams)
 
     config = tf.ConfigProto()
     config.log_device_placement = True
@@ -27,7 +32,7 @@ def train():
 
         while True:
             try:
-                _, loss = sess.run([model.update, model.loss])
+                _, loss = sess.run([model.update, model.train_loss])
 
                 if not batch_id % 10:
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
