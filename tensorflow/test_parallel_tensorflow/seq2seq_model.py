@@ -29,7 +29,7 @@ hparams = tf.contrib.training.HParams(
     output_buffer_size=None,
     disable_shuffle=False,
     # when using multi-gpu cards, this means bath size per card.
-    batch_size=80,
+    batch_size=100,
 
     # hyper parameters for model topology
     time_major=False,
@@ -46,7 +46,8 @@ hparams = tf.contrib.training.HParams(
     optimizer="adam",
     learning_rate=0.001,
     num_keep_ckpts=5,
-    max_gradient_norm=5., )
+    max_gradient_norm=5.,
+)
 
 
 class Seq2SeqModel(object):
@@ -55,6 +56,8 @@ class Seq2SeqModel(object):
                  iterator,
                  hparams,
                  mode=tf.contrib.learn.ModeKeys.TRAIN):
+        self.device_merge_gradient = "/gpu:0"
+
         self.iterator = iterator
         self.mode = mode
 
@@ -87,33 +90,36 @@ class Seq2SeqModel(object):
                 hparams)
 
         if self.mode == tf.contrib.learn.ModeKeys.TRAIN:
-            self.train_loss = self.loss / tf.to_float(self.batch_size)
-            self.word_count = tf.reduce_sum(
-                self.iterator.source_sequence_length) + tf.reduce_sum(
-                    self.iterator.target_sequence_length)
+            with tf.device(self.device_merge_gradient):
+                self.train_loss = self.loss / tf.to_float(self.batch_size)
+                self.word_count = tf.reduce_sum(
+                    self.iterator.source_sequence_length) + tf.reduce_sum(
+                        self.iterator.target_sequence_length)
 
-            self.learning_rate = tf.constant(hparams.learning_rate)
-            self.global_step = tf.Variable(0, trainable=False)
+                self.learning_rate = tf.constant(hparams.learning_rate)
+                self.global_step = tf.Variable(0, trainable=False)
 
-            # Optimizer
-            if hparams.optimizer == "sgd":
-                opt = tf.train.GradientDescentOptimizer(self.learning_rate)
-            elif hparams.optimizer == "adam":
-                opt = tf.train.AdamOptimizer(self.learning_rate)
+                # Optimizer
+                if hparams.optimizer == "sgd":
+                    opt = tf.train.GradientDescentOptimizer(self.learning_rate)
+                elif hparams.optimizer == "adam":
+                    opt = tf.train.AdamOptimizer(self.learning_rate)
 
-            colocate_gradients_with_ops = True
-            params = tf.trainable_variables()
-            gradients = tf.gradients(
-                self.train_loss,
-                params,
-                colocate_gradients_with_ops=colocate_gradients_with_ops, )
+                colocate_gradients_with_ops = True
+                params = tf.trainable_variables()
+                gradients = tf.gradients(
+                    self.train_loss,
+                    params,
+                    colocate_gradients_with_ops=colocate_gradients_with_ops,
+                )
 
-            clipped_gradients, gradient_norm = tf.clip_by_global_norm(
-                gradients, hparams.max_gradient_norm)
-            self.grad_norm = gradient_norm
+                clipped_gradients, gradient_norm = tf.clip_by_global_norm(
+                    gradients, hparams.max_gradient_norm)
+                self.grad_norm = gradient_norm
 
-            self.update = opt.apply_gradients(
-                zip(clipped_gradients, params), global_step=self.global_step)
+                self.update = opt.apply_gradients(
+                    zip(clipped_gradients, params),
+                    global_step=self.global_step)
 
         elif self.mode == tf.contrib.learn.ModeKeys.EVAL:
             #TODO(caoying): not implemented yet.
@@ -125,7 +131,7 @@ class Seq2SeqModel(object):
         self.saver = tf.train.Saver(
             tf.global_variables(), max_to_keep=hparams.num_keep_ckpts)
 
-    def _merge_outputs(self, out_splits, device_str='/cpu:0'):
+    def _merge_outputs(self, out_splits, device_str):
         assert len(out_splits), "No output is given."
 
         split_num = len(out_splits)
@@ -167,7 +173,7 @@ class Seq2SeqModel(object):
                     out_i = fn(**{k: v[i] for k, v in in_splits.items()})
                     out_splits.append(out_i)
 
-        return self._merge_outputs(out_splits)
+        return self._merge_outputs(out_splits, self.device_merge_gradient)
 
     def build_graph(self,
                     source,
@@ -248,7 +254,8 @@ class Seq2SeqModel(object):
                     num_units=num_units,
                     forget_bias=forget_bias,
                     dropout=dropout,
-                    mode=mode, ))
+                    mode=mode,
+                ))
         if num_layers == 1:  # Single layer.
             return cell_list[0]
         else:  # Multi layers
@@ -330,8 +337,8 @@ class Seq2SeqModel(object):
                             bi_encoder_state[1][layer_id])  # backward
                     encoder_state = tuple(encoder_state)
             else:
-                raise ValueError("Unknown encoder_type %s" %
-                                 hparams.encoder_type)
+                raise ValueError(
+                    "Unknown encoder_type %s" % hparams.encoder_type)
         return encoder_outputs, encoder_state
 
     def _build_decoder_cell(self, hparams, encoder_outputs, encoder_state):
@@ -343,8 +350,8 @@ class Seq2SeqModel(object):
             dropout=hparams.dropout,
             mode=self.mode)
 
-        if (self.mode == tf.contrib.learn.ModeKeys.INFER and
-                hparams.beam_width > 0):
+        if (self.mode == tf.contrib.learn.ModeKeys.INFER
+                and hparams.beam_width > 0):
             #TODO(caoying): not implemented yet.
             raise NotImplementedError("To be implemented")
         else:
@@ -364,8 +371,8 @@ class Seq2SeqModel(object):
                 if hparams.time_major:
                     target_input = tf.transpose(target_input)
 
-                decoder_emb_inp = tf.nn.embedding_lookup(target_embed,
-                                                         target_input)
+                decoder_emb_inp = tf.nn.embedding_lookup(
+                    target_embed, target_input)
 
                 # Helper
                 helper = tf.contrib.seq2seq.TrainingHelper(
@@ -376,7 +383,8 @@ class Seq2SeqModel(object):
                 decoder = tf.contrib.seq2seq.BasicDecoder(
                     cell,
                     helper,
-                    decoder_initial_state, )
+                    decoder_initial_state,
+                )
 
                 # Dynamic decoding
                 (outputs, final_context_state,

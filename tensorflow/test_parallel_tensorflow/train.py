@@ -2,6 +2,7 @@
 #coding=utf-8
 import pdb
 import time
+
 import tensorflow as tf
 
 from iterator_helper import get_iterator
@@ -12,13 +13,16 @@ from utils import get_available_gpus
 
 def train():
     gpu_num = len(get_available_gpus())
+    batch_size = (hparams.batch_size * gpu_num
+                  if gpu_num > 1 else hparams.batch_size)
+    print("batch size = %d" % (batch_size))
+
     iterator = get_iterator(
         src_file_name=hparams.src_file_name,
         tgt_file_name=hparams.tgt_file_name,
         src_vocab_file=hparams.src_vocab_file,
         tgt_vocab_file=hparams.tgt_vocab_file,
-        batch_size=(hparams.batch_size * gpu_num
-                    if gpu_num > 1 else hparams.batch_size),
+        batch_size=batch_size,
         disable_shuffle=True)
 
     model = Seq2SeqModel(gpu_num, iterator, hparams)
@@ -37,21 +41,23 @@ def train():
         batch_id = 0
 
         start_time = time.time()
+        total_word_count = 0
         while True:
             try:
-                _, loss, bs, src_len = sess.run([
-                    model.update, model.train_loss, model.batch_size,
-                    model.iterator.source_sequence_length
-                ])
+                _, loss, word_count = sess.run(
+                    [model.update, model.train_loss, model.word_count])
+                total_word_count += word_count
 
                 if not batch_id % 10:
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
                                                               batch_id, loss))
                 batch_id += 1
 
-                if batch_id == 50:
-                    print("time to run 50 batches : %f" %
-                          (time.time() - start_time))
+                if batch_id == 100:
+                    time_elapsed = time.time() - start_time
+                    print("total time : %.4f, speed : %.6f (w/s)" %
+                          (time_elapsed, total_word_count / time_elapsed))
+                    break
 
             except tf.errors.OutOfRangeError:
                 sess.run(initializer)
