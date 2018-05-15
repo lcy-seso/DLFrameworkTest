@@ -20,12 +20,19 @@ class RNNLM(object):
         self.learning_rate = config.learning_rate
 
         # build the model
-        self.cost = self.make_parallel(
-            self.build_model,
-            len(get_available_gpus()),
-            curwd=curwd,
-            nxtwd=nxtwd,
-            seq_len=seq_len)
+        num_gpus = len(get_available_gpus())
+        if num_gpus > 1:
+            self.cost = self.make_parallel(
+                self.build_model,
+                num_gpus=num_gpus,
+                curwd=curwd,
+                nxtwd=nxtwd,
+                seq_len=seq_len)
+        else:
+            self.cost = tf.reduce_sum(
+                self.build_model(curwd, nxtwd, seq_len)) / tf.to_float(
+                    self.batch_size)
+
         self.optim = self.optimize()
 
     def build_model(self, curwd, nxtwd, seq_len):
