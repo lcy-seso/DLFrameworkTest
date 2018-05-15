@@ -46,8 +46,7 @@ hparams = tf.contrib.training.HParams(
     optimizer="adam",
     learning_rate=0.001,
     num_keep_ckpts=5,
-    max_gradient_norm=5.,
-)
+    max_gradient_norm=5., )
 
 
 class Seq2SeqModel(object):
@@ -110,8 +109,7 @@ class Seq2SeqModel(object):
                 gradients = tf.gradients(
                     self.train_loss,
                     params,
-                    colocate_gradients_with_ops=colocate_gradients_with_ops,
-                )
+                    colocate_gradients_with_ops=colocate_gradients_with_ops, )
 
                 clipped_gradients, gradient_norm = tf.clip_by_global_norm(
                     gradients, hparams.max_gradient_norm)
@@ -168,10 +166,11 @@ class Seq2SeqModel(object):
         out_splits = []
         for i in range(gpu_num):
             with tf.device(tf.DeviceSpec(device_type="GPU", device_index=i)):
-                with tf.variable_scope(
-                        tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
-                    out_i = fn(**{k: v[i] for k, v in in_splits.items()})
-                    out_splits.append(out_i)
+                with tf.name_scope("replica_%02d" % (i)) as scope:
+                    with tf.variable_scope(
+                            tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
+                        out_i = fn(**{k: v[i] for k, v in in_splits.items()})
+                        out_splits.append(out_i)
 
         return self._merge_outputs(out_splits, self.device_merge_gradient)
 
@@ -254,8 +253,7 @@ class Seq2SeqModel(object):
                     num_units=num_units,
                     forget_bias=forget_bias,
                     dropout=dropout,
-                    mode=mode,
-                ))
+                    mode=mode, ))
         if num_layers == 1:  # Single layer.
             return cell_list[0]
         else:  # Multi layers
@@ -337,8 +335,8 @@ class Seq2SeqModel(object):
                             bi_encoder_state[1][layer_id])  # backward
                     encoder_state = tuple(encoder_state)
             else:
-                raise ValueError(
-                    "Unknown encoder_type %s" % hparams.encoder_type)
+                raise ValueError("Unknown encoder_type %s" %
+                                 hparams.encoder_type)
         return encoder_outputs, encoder_state
 
     def _build_decoder_cell(self, hparams, encoder_outputs, encoder_state):
@@ -350,8 +348,8 @@ class Seq2SeqModel(object):
             dropout=hparams.dropout,
             mode=self.mode)
 
-        if (self.mode == tf.contrib.learn.ModeKeys.INFER
-                and hparams.beam_width > 0):
+        if (self.mode == tf.contrib.learn.ModeKeys.INFER and
+                hparams.beam_width > 0):
             #TODO(caoying): not implemented yet.
             raise NotImplementedError("To be implemented")
         else:
@@ -371,8 +369,8 @@ class Seq2SeqModel(object):
                 if hparams.time_major:
                     target_input = tf.transpose(target_input)
 
-                decoder_emb_inp = tf.nn.embedding_lookup(
-                    target_embed, target_input)
+                decoder_emb_inp = tf.nn.embedding_lookup(target_embed,
+                                                         target_input)
 
                 # Helper
                 helper = tf.contrib.seq2seq.TrainingHelper(
@@ -383,8 +381,7 @@ class Seq2SeqModel(object):
                 decoder = tf.contrib.seq2seq.BasicDecoder(
                     cell,
                     helper,
-                    decoder_initial_state,
-                )
+                    decoder_initial_state, )
 
                 # Dynamic decoding
                 (outputs, final_context_state,
