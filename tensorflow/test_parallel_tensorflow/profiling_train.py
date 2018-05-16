@@ -36,19 +36,20 @@ def train():
     builder = tf.profiler.ProfileOptionBuilder
     opts = builder(builder.time_and_memory()).order_by("micros").build()
 
-    with tf.Session(config=config) as sess:
-        sess.run(tf.global_variables_initializer())
-        sess.run(tf.tables_initializer())
-        sess.run(iterator.initializer)
+    with tf.contrib.tfprof.ProfileContext(
+            "profiler_results", trace_steps=[], dump_steps=[]) as pctx:
 
-        pass_id = 0
-        batch_id = 0
+        with tf.Session(config=config) as sess:
+            sess.run(tf.global_variables_initializer())
+            sess.run(tf.tables_initializer())
+            sess.run(iterator.initializer)
 
-        start_time = time.time()
-        total_word_count = 0
+            pass_id = 0
+            batch_id = 0
 
-        with tf.contrib.tfprof.ProfileContext(
-                "profiler_results", trace_steps=[], dump_steps=[]) as pctx:
+            start_time = time.time()
+            total_word_count = 0
+
             while True:
                 try:
                     pctx.trace_next_step()
