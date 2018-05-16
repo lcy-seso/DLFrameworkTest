@@ -1,42 +1,83 @@
 # Test data parallelism on NTM model
 
-## Test environment
+## Test Settings
 
-- TensorFlow r1.8 compiled with Cuda 9.0, cudnn 7.1, NCCL 2.1
-- OS: Description:    Ubuntu 16.04.2 LTS
-- GPU Tesla P100-PCIE-16GB
+### Environment
 
-## Test method
+- **Test machine 1**
+  - TensorFlow r1.8
+  - gcc 4.9
+  - Cuda 9.0
+  - cudnn 7.1
+  - NCCL 2.1
+  - Cuda driver version: 390.30
+  - OS: Ubuntu 16.04.2
+  - Tesla P100-PCIE-16GB
+    - 8 GPU cards on one machine.
+
+- **Test machine 2**
+  - TensorFlow r1.8
+  - gcc 4.9
+  - Cuda 9.0
+  - cudnn 7.1
+  - NCCL 2.1
+  - OS: Ubuntu 16.04.2
+  - GTX Titan
+    - 3 GPU cards on one machine
+
+### Test details
 
 - Disable training data shuffle.
 - Run 100 mini-batches and count words per second.
+- Test codes are base on this commit: [a0a40f0](https://github.com/lcy-seso/dl_framework/tree/a0a40f065ecf9ceb36061c1ef2d749327d051da8/tensorflow/test_parallel_tensorflow)
 
-## data parallelism
+### Results
 
-|GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
-|--|--|--|--|--|
-|1|100|31.5574|15917.518289|
-|2|100|42.6996|23000.764050|1.445|
-|3|100|57.6878|25397.311179|1.59|
-|4|100|71.9705|27547.736864|1.73|
-|5|100|83.5600|29233.876241|1.83|
-|6|100|97.6670|30018.884621|1.88|
+- Exp1 on test machine 1
 
-## profiling results
+    |GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
+    |:--|:--|:--|:--|:--|
+    |1|128|35.774|17575.180|
+    |2|128|47.777|26307.289|1.496|
+    |3|128|65.451|28664.074|1.631|
+    |4|128|79.782|31361.289|1.784|
+    |5|128|95.910|32612.374|1.8556|
+    |6|128|107.257|34947.664|1.988|
+    |7|128|125.969|34777.809|1.979|
+    |8|128|142.747|34930.192|1.987|
 
-1. Compile `tfprof`: execute the following command under the tensorflow source directory:
+  - **Also terrible GPU utilization is found when the number of GPU cards increase.**
 
-    ```bash
-    bazel build --config opt tensorflow/core/profiler/…
-    ```
+- Exp2 on test machine 2
+
+  >The GPU memory for GTX Titan is limited (6G). It cannot run the model by using a large batch size like 128, so batch size in this test is decreased to 64.
+
+    |GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
+    |:--|:--|:--|:--|:--|
+    |1|64|50.850|6135.506|
+    |2|64|59.803|10513.544|1.714|
+    |3|64|65.097|14509.607|2.365|
+
+## How to profile
+
+### use TensorFlow profiler
+
+1. Compile `tfprof` (for more details, please follow [this documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/g3doc/command_line.md#build-tfprof))
+
+    - Execute the following command under the tensorflow source directory:
+
+        ```bash
+        bazel build --config opt tensorflow/core/profiler:profiler
+        ```
+
+    - After the building process is finished, the profiler can be found in: `bazel-bin/tensorflow/core/profiler`.
+
 1. generate timeline vitualization file:
 
     ```bash
     tfprof> graph -step -1 -max_depth 100000 -output timeline:outfile=<filename>
     ```
 
-<p align="center">
-<img src="images/timeline_for_3_cards.png">
-</p>
+### virtualize the execution timeline
 
-A not healthy timeline. Need more analysis.
+- on test machine 1, run 5 batches, here virtualize the timeline for batch 3.
