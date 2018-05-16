@@ -29,7 +29,7 @@ hparams = tf.contrib.training.HParams(
     output_buffer_size=None,
     disable_shuffle=False,
     # when using multi-gpu cards, this means bath size per card.
-    batch_size=100,
+    batch_size=128,
 
     # hyper parameters for model topology
     time_major=False,
