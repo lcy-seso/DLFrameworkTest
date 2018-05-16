@@ -1,26 +1,19 @@
-# Test data parallelism on NTM model
+# Test data parallelism on NMT model
 
 ## Test Settings
 
 ### Environment
 
 - **Test machine 1**
-  - TensorFlow r1.8
-  - gcc 4.9
-  - Cuda 9.0
-  - cudnn 7.1
-  - NCCL 2.1
-  - Cuda driver version: 390.30
+  - TensorFlow r1.8 compiled by gcc 4.9 with Cuda 9.0, cudnn 7.1, NCCL 2.1
+    - Cuda driver version: 390.30
   - OS: Ubuntu 16.04.2
   - Tesla P100-PCIE-16GB
     - 8 GPU cards on one machine.
 
 - **Test machine 2**
-  - TensorFlow r1.8
-  - gcc 4.9
-  - Cuda 9.0
-  - cudnn 7.1
-  - NCCL 2.1
+  - TensorFlow r1.8 compiled by gcc 4.9, with Cuda 9.0, cudnn 7.1, NCCL 2.1
+    - Cuda driver version: 384.130
   - OS: Ubuntu 16.04.2
   - GTX Titan
     - 3 GPU cards on one machine
@@ -45,6 +38,13 @@
     |6|128|107.257|34947.664|1.988|
     |7|128|125.969|34777.809|1.979|
     |8|128|142.747|34930.192|1.987|
+
+    |GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
+    |:--|:--|:--|:--|:--|
+    |1|64|26.311|11857.973||
+    |2|64|38.632|16275.316|1.373|
+    |3|64|52.187|18098.961|1.526|
+
 
   - **Also terrible GPU utilization is found when the number of GPU cards increase.**
 
