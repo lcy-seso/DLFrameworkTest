@@ -21,3 +21,22 @@
 |4|100|71.9705|27547.736864|1.73|
 |5|100|83.5600|29233.876241|1.83|
 |6|100|97.6670|30018.884621|1.88|
+
+## profiling results
+
+1. Compile `tfprof`: execute the following command under the tensorflow source directory:
+
+    ```bash
+    bazel build --config opt tensorflow/core/profiler/…
+    ```
+1. generate timeline vitualization file:
+
+    ```bash
+    tfprof> graph -step -1 -max_depth 100000 -output timeline:outfile=<filename>
+    ```
+
+<p align="center">
+<img src="images/timeline_for_3_cards.png">
+</p>
+
+A not healthy timeline. Need more analysis.

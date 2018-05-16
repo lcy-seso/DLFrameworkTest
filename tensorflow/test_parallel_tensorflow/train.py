@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 #coding=utf-8
-import pdb
 import time
 
 import tensorflow as tf
-from tensorflow.python.client import timeline
 
 from iterator_helper import get_iterator
 from seq2seq_model import Seq2SeqModel, hparams
@@ -33,12 +31,6 @@ def train():
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
 
-    # for profiling
-    builder = tf.profiler.ProfileOptionBuilder
-    opts = builder(builder.time_and_memory()).order_by("micros").build()
-    options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
-
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.tables_initializer())
@@ -49,31 +41,21 @@ def train():
 
         start_time = time.time()
         total_word_count = 0
+
         while True:
             try:
-                with tf.contrib.tfprof.ProfileContext(
-                        "profiler_results", trace_steps=[],
-                        dump_steps=[]) as pctx:
-
-                    pctx.trace_next_step()
-                    pctx.dump_next_step()
-
-                    _, loss, word_count = sess.run(
-                        [model.update, model.train_loss, model.word_count])
-                    total_word_count += word_count
-
-                    pctx.profiler.profile_operations(options=opts)
+                _, loss, word_count = sess.run(
+                    [model.update, model.train_loss, model.word_count])
+                total_word_count += word_count
 
                 if batch_id and not batch_id % 5:
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
                                                               batch_id, loss))
-                    break
-
                 batch_id += 1
 
                 if batch_id == 100:
                     time_elapsed = time.time() - start_time
-                    print("total time : %.4f, speed : %.6f (w/s)" %
+                    print("total time : %.3f, speed : %.3f (w/s)" %
                           (time_elapsed, total_word_count / time_elapsed))
                     break
 
