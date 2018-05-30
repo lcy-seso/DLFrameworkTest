@@ -114,3 +114,7 @@ Some supplementary tests trying to figure out the reason.
   </p>
 
   a strange timeline ...
+
+Update:
+
+The reason for such a strange timeline is that, when displaying, Chrome does not distinguish different GPUs. In the above picture, it does not mean each line is a timeline for one GPU card. The profiler records the start timestamp and duration of each monitored event, and try to arrange it in one timeline. Monitored events for multiple GPU cards are mixed together. User needs to process the dumped results (in json format) himself to understand what happened.
