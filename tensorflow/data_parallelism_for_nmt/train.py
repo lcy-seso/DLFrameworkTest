@@ -9,7 +9,7 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel, hparams
 from utils import get_available_gpus
 
-ENABLE_PROFILE = True
+ENABLE_PROFILE = False
 
 
 def make_config():

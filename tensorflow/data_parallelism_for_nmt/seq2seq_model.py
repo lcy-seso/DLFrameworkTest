@@ -56,13 +56,14 @@ hparams = tf.contrib.training.HParams(
     max_gradient_norm=5.,
 
     # parameter server places
-    variable_update="replicated",
+    # variable_update="replicated",
+    variable_update="parameter_server",
     param_server_device="cpu",
     local_parameter_device="gpu",
 
     # used for all reduced algorithm
     num_gpus=2,
-    variable_consistency="relaxed",
+    variable_consistency="strong",
     gradient_repacking=4,
     all_reduce_spec="nccl",
     agg_small_grads_max_bytes=0,
@@ -206,7 +207,8 @@ class Seq2SeqModel(object):
                 target_sequence_length=inputs["target_sequence_length"],
                 hparams=inputs["hparams"])
 
-            params = tf.trainable_variables()
+            params = self.variable_mgr.trainable_variables_on_device(
+                rel_device_num, abs_device_num)
             grads = tf.gradients(
                 loss, params, aggregation_method=tf.AggregationMethod.DEFAULT)
             gradvars = list(zip(grads, params))
@@ -237,8 +239,8 @@ class Seq2SeqModel(object):
                     gradient_state)
 
             #TODO(caoying): add gradient clipping.
-            opt = tf.train.AdamOptimizer(self.learning_rate)
             self.learning_rate = tf.constant(hparams.learning_rate)
+            opt = tf.train.AdamOptimizer(self.learning_rate)
 
             loss_scale_params = variable_mgr_util.AutoLossScaleParams(
                 enable_auto_loss_scale=False,

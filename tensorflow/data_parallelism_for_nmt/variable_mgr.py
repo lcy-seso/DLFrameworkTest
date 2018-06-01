@@ -9,8 +9,7 @@ import variable_mgr_util
 
 
 class VariableMgr(object):
-    """Abstract superclass for class used by BenchmarkCNN to control variables.
-
+    """
     Functions on this class are used to control how variables are created and
     managed, and how gradients are computed and applied.
     """
@@ -194,7 +193,9 @@ class VariableMgrLocalReplicated(VariableMgr):
 
     def create_outer_variable_scope(self, device_num):
         return tf.variable_scope(
-            "v%s" % device_num, use_resource=self.use_resource_vars)
+            "v%s" % device_num,
+            reuse=False,
+            use_resource=self.use_resource_vars)
 
     def preprocess_device_grads(self, device_grads):
         compact_grads = False
