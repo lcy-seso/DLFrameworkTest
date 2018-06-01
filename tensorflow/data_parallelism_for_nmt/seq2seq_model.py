@@ -225,20 +225,20 @@ class Seq2SeqModel(object):
         gradient_state = device_grads
 
         training_ops = []
-        average_loss = tf.reduce_mean(losses)
 
         # merget gradients using PS mode or all-reduce algorithm
         apply_gradient_devices, gradient_state = (
             self.variable_mgr.preprocess_device_grads(device_grads))
 
         for d, device in enumerate(apply_gradient_devices):
-            avg_grads = self.variable_mgr.get_gradients_to_apply(
-                gradient_state)
-
-            self.learning_rate = tf.constant(hparams.learning_rate)
+            with tf.device(device):
+                average_loss = tf.reduce_mean(losses)
+                avg_grads = self.variable_mgr.get_gradients_to_apply(
+                    gradient_state)
 
             #TODO(caoying): add gradient clipping.
             opt = tf.train.AdamOptimizer(self.learning_rate)
+            self.learning_rate = tf.constant(hparams.learning_rate)
 
             loss_scale_params = variable_mgr_util.AutoLossScaleParams(
                 enable_auto_loss_scale=False,
@@ -248,10 +248,9 @@ class Seq2SeqModel(object):
                 is_chief=True)
 
             # append optimizer operators into the graph
-            with tf.device(self.raw_devices[0]):
-                self.variable_mgr.append_apply_gradients_ops(
-                    gradient_state, opt, avg_grads, training_ops,
-                    loss_scale_params)
+            self.variable_mgr.append_apply_gradients_ops(
+                gradient_state, opt, avg_grads, training_ops,
+                loss_scale_params)
 
         fetches["train_op"] = tf.group(training_ops)
         fetches["average_loss"] = average_loss / tf.to_float(self.batch_size)

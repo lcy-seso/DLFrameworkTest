@@ -6,7 +6,7 @@
 
 1. In the best case, the speedup ratio cannot increase when more than 3 GPU cards are used.
 1. The time of forward computation increase significantly which is the most important factor that makes the training process is hard to scale to more than 3 cards. This indicates the copy overhead seems to be too high as more and more GPU cards are used.
-1. When using 1 to 3 cards, the speedup ratio is worse in P100 than that in Titian. [**see [this](https://github.com/lcy-seso/dl_framework/tree/master/tensorflow/test_parallel_tensorflow)**]
+1. When using 1 to 3 cards, the speedup ratio is worse in P100 than that in Titian. [**see [this](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt_first_imp/README.md)**]
 
 ## Current Best Practice
 
