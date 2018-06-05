@@ -87,7 +87,7 @@ def train():
                     break
 
             except tf.errors.OutOfRangeError:
-                sess.run(iterator.initializer)
+                sess.run(model.iterator.initializer)
                 batch_id = 0
                 continue
 

@@ -58,7 +58,7 @@ hparams = tf.contrib.training.HParams(
     # parameter server places
     # variable_update="replicated",
     variable_update="parameter_server",
-    param_server_device="cpu",
+    param_server_device="gpu",
     local_parameter_device="gpu",
 
     # used for all reduced algorithm

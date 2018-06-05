@@ -131,13 +131,36 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
     """
 
     grads = []
+
+    is_indexed_slices = None
+
+    indices = []
+    values = []
+
+    lookup_table_grad = None
     for g, _ in grad_and_vars:
         if isinstance(g, ops.IndexedSlices):
-            g = tf.convert_to_tensor(g)
-        grads.append(g)
+            is_indexed_slices = True
+
+            if len(grad_and_vars) == 1:
+                # no need to merge gradiens when there is only one GPU device
+                lookup_table_grad = g
+            else:
+                values.append(g.values)
+                indices.append(g.indices)
+        else:
+            grads.append(g)
 
     with tf.name_scope("merge_gradients") as name_scope:
-        grad = tf.add_n(grads)
+        if is_indexed_slices is not None:
+            if lookup_table_grad is None:
+                grad = tf.IndexedSlices(
+                    values=tf.concat(values, axis=0),
+                    indices=tf.concat(indices, axis=0))
+            else:
+                grad = lookup_table_grad
+        else:
+            grad = tf.add_n(grads)
 
         if use_mean and len(grads) > 1:
             grad = tf.multiply(grad, 1.0 / len(grads))
@@ -148,37 +171,6 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
         return (grad, v), has_nan_or_inf
     else:
         return (grad, v), None
-
-
-def aggregate_gradients_using_copy(tower_grads, use_mean, check_inf_nan):
-    """Calculate the average gradient for each shared variable across all towers.
-
-    Note that this function provides a synchronization point across all towers.
-
-    Args:
-      tower_grads: List of lists of (gradient, variable) tuples. The outer list
-        is over towers. The inner list is over individual gradients.
-      use_mean: if True, mean is taken, else sum of gradients is taken.
-      check_inf_nan: check grads for nans and infs.
-
-    Returns:
-      The tuple ([(average_gradient, variable),], has_nan_or_inf) where the
-        gradient has been averaged across all towers. The variable is chosen from
-        the first tower. The has_nan_or_inf indicates the grads has nan or inf.
-    """
-    agg_grads = []
-    has_nan_or_inf_list = []
-
-    for single_grads in zip(*tower_grads):
-        grad_and_var, has_nan_or_inf = aggregate_single_gradient_using_copy(
-            single_grads, use_mean, check_inf_nan)
-        agg_grads.append(grad_and_var)
-        has_nan_or_inf_list.append(has_nan_or_inf)
-
-    if check_inf_nan:
-        return agg_grads, tf.reduce_any(has_nan_or_inf_list)
-    else:
-        return agg_grads, None
 
 
 def aggregate_gradients_using_copy_with_variable_colocation(
@@ -200,6 +192,7 @@ def aggregate_gradients_using_copy_with_variable_colocation(
     """
     agg_grads = []
     has_nan_or_inf_list = []
+
     for single_grads in zip(*tower_grads):
         # Note that each single_grads looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
@@ -209,8 +202,9 @@ def aggregate_gradients_using_copy_with_variable_colocation(
             assert v == var
 
         with tf.device(var.device):
-            grad_and_var, has_nan_or_inf = aggregate_single_gradient_using_copy(
-                single_grads, use_mean, check_inf_nan)
+            (grad_and_var,
+             has_nan_or_inf) = aggregate_single_gradient_using_copy(
+                 single_grads, use_mean, check_inf_nan)
             agg_grads.append(grad_and_var)
             has_nan_or_inf_list.append(has_nan_or_inf)
 
