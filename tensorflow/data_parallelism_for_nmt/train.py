@@ -80,7 +80,7 @@ def train():
                         f.write(chrome_trace)
                     break
 
-                if batch_id == 50:
+                if batch_id == 20:
                     time_elapsed = time.time() - start_time
                     print("total time : %.3f, speed : %.3f (w/s)" %
                           (time_elapsed, total_word_count / time_elapsed))

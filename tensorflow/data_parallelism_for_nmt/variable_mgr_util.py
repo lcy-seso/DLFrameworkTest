@@ -143,7 +143,7 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
             is_indexed_slices = True
 
             if len(grad_and_vars) == 1:
-                # no need to merge gradiens when there is only one GPU device
+                # no need to merge gradients when there is only one GPU device
                 lookup_table_grad = g
             else:
                 values.append(g.values)

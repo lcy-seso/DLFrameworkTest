@@ -98,37 +98,40 @@ class BatchAllReduceAlgorithm(object):
         warmup_ops = []
         if num_splits:
             packer = _TensorPacker(num_splits)
-            (known_shape_tensors, unknown_shape_tensors
-             ) = packer.concat_all_device_tensors(all_device_tensors)
-
+            all_device_tensors = packer.concat_all_device_tensors(
+                all_device_tensors)
+        # If enabled, we compact and defer tensors in between concatenating them
+        # and splitting them, because it is faster to do operations on a single
+        # concatenated tensor than on multiple smaller tensors.
         if compact_tensors:
-            raise NotImplementedError("Not implemented yet.")
+            all_device_tensors_before_compact = all_device_tensors
+            all_device_tensors = _compact_all_device_tensors(
+                all_device_tensors)
         if defer_tensors:
-            raise NotImplementedError("Not implemented yet.")
+            all_device_tensors, put_ops, warmup_ops = _defer_all_device_tensors(
+                all_device_tensors)
         if num_splits:
-            known_shape_tensors = packer.split_all_device_tensors(
-                known_shape_tensors)
+            all_device_tensors = packer.split_all_device_tensors(
+                all_device_tensors)
 
-        all_device_tensors = [
-            t[0] + t[1]
-            for t in zip(known_shape_tensors, unknown_shape_tensors)
-        ]
         all_device_tensors = self._do_batch_all_reduce(all_device_tensors)
 
         # Undo the preprocessing operations in opposite order as we applied them.
         if num_splits:
             all_device_tensors = packer.undo_split_all_device_tensors(
                 all_device_tensors)
-
+        # Note: There is no undo operation for deferring tensors. But we do need to
+        # call _add_put_op_control_deps at the end if we deferred the tensors.
         if compact_tensors:
-            raise NotImplementedError("Not implemented yet.")
+            all_device_tensors = _undo_compact_all_device_tensors(
+                all_device_tensors, all_device_tensors_before_compact)
         if num_splits:
             all_device_tensors = packer.undo_concat_all_device_tensors(
                 all_device_tensors)
-            pdb.set_trace()
 
         if defer_tensors:
-            raise NotImplementedError("Not implemented yet.")
+            all_device_tensors = _add_put_op_control_deps(all_device_tensors,
+                                                          num_splits, put_ops)
         return all_device_tensors, warmup_ops
 
     @abc.abstractmethod
@@ -347,36 +350,14 @@ class _TensorPacker(object):
 
     def _concat_tensors(self, device_tensors):
         """Concatenate tensors into a single tensor."""
-        # (FIXME) : For tensors whose shapes are only partially-known,
-        # this implementation need to be improved.
-
-        orig_known_shapes = []
-        orig_known_sizes = []
-
-        flat_known_shape_tensors = []
-        unknown_shape_tensors = []
-        for i, t in enumerate(device_tensors):
-            if isinstance(t, ops.IndexedSlices):
-                # in NLP task, the gradients of word embedding is
-                # op.IndexedSlices not a Tensor.
-                t = tf.convert_to_tensor(t)
-
-            tensor_shape = t.shape
-            flatted_vec = tf.reshape(t, [-1])
-            if tensor_shape.is_fully_defined():
-                orig_known_shapes.append(tensor_shape)
-                flat_known_shape_tensors.append(flatted_vec)
-            else:
-                # (FIXME) gradients whose shapes are partially decided cannot be
-                # concatenated together, because it cannot decide how to
-                # split it later.
-                unknown_shape_tensors.append(flatted_vec)
-
-        orig_known_sizes = [s.num_elements() for s in orig_known_shapes]
-        concatenated_known_shape_grad = tf.concat(flat_known_shape_tensors, 0)
-        return (concatenated_known_shape_grad,
-                self._concat_tensor_state(orig_known_shapes, orig_known_sizes),
-                unknown_shape_tensors)
+        flat_tensors = [tf.reshape(t, [-1]) for t in device_tensors]
+        orig_shapes = [t.shape for t in device_tensors]
+        orig_sizes = [s.num_elements() for s in orig_shapes]
+        # All shapes must be fully defined.
+        assert None not in orig_sizes
+        concatenated_grad = tf.concat(flat_tensors, 0)
+        return concatenated_grad, self._concat_tensor_state(orig_shapes,
+                                                            orig_sizes)
 
     def _split_tensors(self, concatenated_tensor):
         """Splits concatenated tensor into `num_splits` pieces."""
@@ -416,22 +397,17 @@ class _TensorPacker(object):
           consists of a single concatenated tensor.
         """
         assert self._next_method == "concat"
-        known_shape_tensors = []
-        unknown_shape_tensors = []
+        new_all_device_tensors = []
         tensor_states = []
         for device_tensors in all_device_tensors:
             with tf.colocate_with(device_tensors[0]):
-                (concat_known_shape_tensor, tensor_state,
-                 unconcat_unknown_shape_tensors
-                 ) = self._concat_tensors(device_tensors)
-
-                known_shape_tensors.append([concat_known_shape_tensor])
-                unknown_shape_tensors.append([unconcat_unknown_shape_tensors])
+                concat_tensor, tensor_state = self._concat_tensors(
+                    device_tensors)
+                new_all_device_tensors.append([concat_tensor])
                 tensor_states.append(tensor_state)
-
         self._tensor_states = tensor_states
         self._next_method = "split"
-        return known_shape_tensors, unknown_shape_tensors
+        return new_all_device_tensors
 
     def split_all_device_tensors(self, all_device_tensors):
         """Splits concatenated tensors into `num_splits` pieces.
@@ -451,19 +427,12 @@ class _TensorPacker(object):
           the concatenated tensor on each device have been split. Each inner list
           is a list of length `num_splits`.
         """
-
-        # (FIXME and NOTE) : the current implementation only splits Tensors
-        # whose shape if fully determined before runing the graph.
-
         assert self._next_method == "split"
         new_all_device_tensors = []
         for [concat_tensor] in all_device_tensors:
             with tf.colocate_with(concat_tensor):
                 new_all_device_tensors.append(
                     self._split_tensors(concat_tensor))
-
-        # (NOTE) this does not contain the gradients whose shapes are decided
-        # during runtime.
         self._orig_concat_all_device_tensors = all_device_tensors
         self._next_method = "undo_split"
         return new_all_device_tensors
@@ -472,15 +441,11 @@ class _TensorPacker(object):
         """Undoes the effects of `split_all_device_tensors`."""
         assert self._next_method == "undo_split"
         new_all_device_tensors = []
-        # (FIXME) in the current implementation, the gradients whose shapes are
-        # partially decided before runing are put in the last rount of
-        # all-reduce.
         for i, device_tensors in enumerate(all_device_tensors):
             [orig_tensor] = self._orig_concat_all_device_tensors[i]
             with tf.colocate_with(orig_tensor):
-                new_all_device_tensors.append([
-                    self._undo_split_tensors(device_tensors[:-1])
-                ] + [device_tensors[-1]])
+                new_all_device_tensors.append(
+                    [self._undo_split_tensors(device_tensors)])
         self._next_method = "undo_concat"
         return new_all_device_tensors
 

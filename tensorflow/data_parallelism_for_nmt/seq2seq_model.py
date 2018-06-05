@@ -56,15 +56,15 @@ hparams = tf.contrib.training.HParams(
     max_gradient_norm=5.,
 
     # parameter server places
-    # variable_update="replicated",
-    variable_update="parameter_server",
+    variable_update="replicated",
+    # variable_update="parameter_server",
     param_server_device="gpu",
     local_parameter_device="gpu",
 
     # used for all reduced algorithm
     num_gpus=2,
     variable_consistency="strong",
-    gradient_repacking=4,
+    gradient_repacking=8,
     all_reduce_spec="nccl",
     agg_small_grads_max_bytes=0,
     agg_small_grads_max_group=10, )
@@ -228,7 +228,7 @@ class Seq2SeqModel(object):
 
         training_ops = []
 
-        # merget gradients using PS mode or all-reduce algorithm
+        # gradient_state is the merged gradient.
         apply_gradient_devices, gradient_state = (
             self.variable_mgr.preprocess_device_grads(device_grads))
 
@@ -236,7 +236,7 @@ class Seq2SeqModel(object):
             with tf.device(device):
                 average_loss = tf.reduce_mean(losses)
                 avg_grads = self.variable_mgr.get_gradients_to_apply(
-                    gradient_state)
+                    d, gradient_state)
 
             #TODO(caoying): add gradient clipping.
             self.learning_rate = tf.constant(hparams.learning_rate)

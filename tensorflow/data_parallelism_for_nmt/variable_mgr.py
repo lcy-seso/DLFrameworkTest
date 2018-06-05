@@ -2,10 +2,13 @@ from __future__ import print_function
 
 import pdb
 import tensorflow as tf
+from tensorflow.python.framework import ops
 
 import allreduce
 import batch_allreduce
 import variable_mgr_util
+
+from collections import defaultdict
 
 
 class VariableMgr(object):
@@ -138,7 +141,8 @@ class VariableMgrLocalFetchFromPS(VariableMgr):
     def preprocess_device_grads(self, device_grads):
         return ([self.model_helper.param_server_device], device_grads)
 
-    def get_gradients_to_apply(self, gradient_state):
+    def get_gradients_to_apply(self, device_num, gradient_state):
+        assert device_num == 0
         device_grads = gradient_state
         agg_grads, self.grad_has_inf_nan = (
             variable_mgr_util.
@@ -202,8 +206,29 @@ class VariableMgrLocalReplicated(VariableMgr):
         defer_grads = (
             self.model_helper.params.variable_consistency == "relaxed")
 
-        grads_to_reduce = [[g for g, _ in grad_vars]
-                           for grad_vars in device_grads]
+        grads_to_reduce = []
+        device_grads_tmp = []
+
+        # gradients of lookup table cannot merged by using allreduce.
+        indices = defaultdict(list)
+        values = defaultdict(list)
+        # (FIXME) hard code implementation to merge gradients of lookup table
+        # on each GPU device.
+        emb_grads = [[] for _ in range(len(self.model_helper.devices))]
+
+        for grad_vars in device_grads:
+            grads_to_reduce.append([])
+            tmp_vars = []
+            for idx, grad_var in enumerate(grad_vars):
+                g = grad_var[0]
+
+                if isinstance(g, ops.IndexedSlices):
+                    indices[str(idx)].append(g.indices)
+                    values[str(idx)].append(g.values)
+                else:
+                    grads_to_reduce[-1].append(g)
+                    tmp_vars.append(grad_var)
+            device_grads_tmp.append(tmp_vars)
 
         algorithm = batch_allreduce.algorithm_from_params(
             self.model_helper.params)
@@ -211,20 +236,17 @@ class VariableMgrLocalReplicated(VariableMgr):
             grads_to_reduce, self.model_helper.params.gradient_repacking,
             compact_grads, defer_grads)
 
-        if self.model_helper.enable_auto_loss_scale:
-            # Check for infs or nans
-            is_finite_list = []
-            for tower_grads in reduced_grads:
-                with tf.colocate_with(tower_grads[0]):
-                    is_finite_list.append(
-                        tf.reduce_all([
-                            tf.reduce_all(tf.is_finite(g)) for g in tower_grads
-                        ]))
-            self.grad_has_inf_nan = tf.logical_not(
-                tf.reduce_all(is_finite_list))
         reduced_device_grads = [[
             (g, v) for g, (_, v) in zip(grads, grad_vars)
-        ] for grads, grad_vars in zip(reduced_grads, device_grads)]
+        ] for grads, grad_vars in zip(reduced_grads, device_grads_tmp)]
+
+        for key in indices:
+            for i, device in enumerate(self.model_helper.devices):
+                v = device_grads[i][int(key)][1]
+                g = tf.IndexedSlices(
+                    values=tf.concat(values[key], axis=0),
+                    indices=tf.concat(indices[key], axis=0))
+                reduced_device_grads[i].append((g, v))
 
         return self.model_helper.devices, reduced_device_grads
 
