@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 #coding=utf-8
+from __future__ import division
+
 import time
 import pdb
 
@@ -10,6 +12,7 @@ from seq2seq_model import Seq2SeqModel, hparams
 from utils import get_available_gpus
 
 ENABLE_PROFILE = False
+SINGLE_CARD_SPEED = 35990.222
 
 
 def make_config():
@@ -24,18 +27,66 @@ def make_config():
     return config
 
 
-def train():
-    num_gpus = len(get_available_gpus())
-    print("num_gpus = %d, batch size = %d" % (num_gpus,
-                                              hparams.batch_size * num_gpus))
+def profiling_train(model):
+    builder = tf.profiler.ProfileOptionBuilder
+    opts = builder(builder.time_and_memory()).order_by("micros").build()
 
-    model = Seq2SeqModel(num_gpus, hparams)
-    config = make_config()
+    options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+    many_runs_timeline = TimeLiner()
 
-    options = tf.RunOptions(
-        trace_level=tf.RunOptions.FULL_TRACE) if ENABLE_PROFILE else None
-    run_metadata = tf.RunMetadata() if ENABLE_PROFILE else None
+    with tf.contrib.tfprof.ProfileContext(
+            "profiling_%02d_cards" % (num_gpus), trace_steps=[],
+            dump_steps=[]) as pctx:
 
+        sv = tf.train.Supervisor(
+            is_chief=True,
+            logdir="train_log",
+            ready_for_local_init_op=None,
+            local_init_op=model.local_var_init_op_group,
+            saver=model.saver,
+            global_step=model.global_step,
+            summary_op=None,
+            save_model_secs=600,
+            summary_writer=None)
+        with sv.managed_session(
+                master="", config=config,
+                start_standard_services=False) as sess:
+
+            pass_id = 0
+            batch_id = 0
+
+            start_time = time.time()
+            total_word_count = 0
+
+            sess.run(model.iterator.initializer)
+
+            while True:
+                try:
+                    if batch_id == 2:
+                        pctx.trace_next_step()
+                        pctx.dump_next_step()
+
+                    _, loss, word_count = sess.run(
+                        list(model.fetches.values()) + [model.word_count],
+                        options=options,
+                        run_metadata=run_metadata)
+
+                    total_word_count += word_count
+                    pctx.profiler.profile_operations(options=opts)
+
+                    print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
+                                                              batch_id, loss))
+                    batch_id += 1
+                    if batch_id == 3: break
+
+                except tf.errors.OutOfRangeError:
+                    sess.run(iterator.initializer)
+                    batch_id = 0
+                    continue
+
+
+def train(model):
     sv = tf.train.Supervisor(
         is_chief=True,
         logdir="train_log",
@@ -59,9 +110,7 @@ def train():
         while True:
             try:
                 _, loss, word_count = sess.run(
-                    list(model.fetches.values()) + [model.word_count],
-                    options=options,
-                    run_metadata=run_metadata)
+                    list(model.fetches.values()) + [model.word_count])
 
                 total_word_count += word_count
 
@@ -70,20 +119,17 @@ def train():
                                                               batch_id, loss))
                 batch_id += 1
 
-                if ENABLE_PROFILE and batch_id == 4:
-                    fetched_timeline = timeline.Timeline(
-                        run_metadata.step_stats)
-                    chrome_trace = fetched_timeline.generate_chrome_trace_format(
-                    )
-                    with open("profiling_log/nmt_%02d_cards_timeline.json" %
-                              (num_gpus), "w") as f:
-                        f.write(chrome_trace)
-                    break
-
                 if batch_id == 20:
+                    print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
+                                                              batch_id, loss))
                     time_elapsed = time.time() - start_time
-                    print("total time : %.3f, speed : %.3f (w/s)" %
-                          (time_elapsed, total_word_count / time_elapsed))
+                    speed = total_word_count / time_elapsed
+                    ratio = (1. if SINGLE_CARD_SPEED is None else
+                             speed / SINGLE_CARD_SPEED)
+
+                    print(("|gpu number|total time|speed|speedup ratio|\n"
+                           "|%d|%.3f|%.3f|%.2f|") % (num_gpus, time_elapsed,
+                                                     speed, ratio))
                     break
 
             except tf.errors.OutOfRangeError:
@@ -93,4 +139,13 @@ def train():
 
 
 if __name__ == "__main__":
-    train()
+    num_gpus = len(get_available_gpus())
+    print("num_gpus = %d, batch size = %d" % (num_gpus,
+                                              hparams.batch_size * num_gpus))
+    model = Seq2SeqModel(num_gpus, hparams)
+    config = make_config()
+
+    if ENABLE_PROFILE:
+        profiling_train(model)
+    else:
+        train(model)

@@ -13,6 +13,7 @@ from tensorflow.python.util import nest
 import variable_mgr
 import variable_mgr_util
 from iterator_helper import get_iterator
+from utils import get_available_gpus
 
 __all__ = [
     "Seq2SeqModel",
@@ -62,9 +63,9 @@ hparams = tf.contrib.training.HParams(
     local_parameter_device="gpu",
 
     # used for all reduced algorithm
-    num_gpus=2,
+    num_gpus=len(get_available_gpus()),
     variable_consistency="strong",
-    gradient_repacking=8,
+    gradient_repacking=4,
     all_reduce_spec="nccl",
     agg_small_grads_max_bytes=0,
     agg_small_grads_max_group=10, )
