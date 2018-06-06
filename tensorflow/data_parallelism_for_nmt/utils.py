@@ -41,7 +41,7 @@ def add_arguments(parser):
     parser.add_argument(
         "--output_buffer_size", type=int, default=None, help="")
     parser.add_argument("--disable_shuffle", type=bool, default=False, help="")
-    parser.add_argument("--batch_size", type=int, default=360, help="")
+    parser.add_argument("--batch_size", type=int, default=64, help="")
 
     parser.add_argument("--time_major", type=bool, default=False, help="")
     parser.add_argument("--dropout", type=float, default=0., help="")
@@ -72,6 +72,8 @@ def add_arguments(parser):
         "--agg_small_grads_max_bytes", type=int, default=0, help="")
     parser.add_argument(
         "--agg_small_grads_max_group", type=int, default=10, help="")
+
+    parser.add_argument("--enable_profile", type=bool, default=False, help="")
 
 
 def create_hparams(flags):
@@ -121,4 +123,5 @@ def create_hparams(flags):
         gradient_repacking=flags.gradient_repacking,
         all_reduce_spec=flags.all_reduce_spec,
         agg_small_grads_max_bytes=flags.agg_small_grads_max_bytes,
-        agg_small_grads_max_group=flags.agg_small_grads_max_group, )
+        agg_small_grads_max_group=flags.agg_small_grads_max_group,
+        enable_profile=flags.enable_profile, )

@@ -12,8 +12,7 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-ENABLE_PROFILE = False
-SINGLE_CARD_SPEED = 35990.222
+SINGLE_CARD_SPEED = None
 
 
 def make_config():
@@ -29,15 +28,19 @@ def make_config():
 
 
 def profiling_train(model, config):
+
     builder = tf.profiler.ProfileOptionBuilder
     opts = builder(builder.time_and_memory()).order_by("micros").build()
 
+    tf.profiler.profile(
+        tf.get_default_graph(),
+        options=tf.profiler.ProfileOptionBuilder.float_operation())
+
     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
-    many_runs_timeline = TimeLiner()
-
     with tf.contrib.tfprof.ProfileContext(
-            "profiling_%02d_cards" % (num_gpus), trace_steps=[],
+            "profiling_%02d_cards" % (model.num_gpus),
+            trace_steps=[],
             dump_steps=[]) as pctx:
 
         sv = tf.train.Supervisor(
@@ -147,7 +150,7 @@ def main(unused_argv):
           (model.num_gpus, hparams.batch_size * model.num_gpus))
     config = make_config()
 
-    if ENABLE_PROFILE:
+    if hparams.enable_profile:
         profiling_train(model, config)
     else:
         train(model, config)
