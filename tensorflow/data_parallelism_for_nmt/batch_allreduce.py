@@ -181,10 +181,10 @@ class AllReduceSpecAlgorithm(BatchAllReduceAlgorithm):
                 for grad_vars in aggregated_device_grads]
 
 
-def algorithm_from_params(params):
+def algorithm_from_params(params, num_gpus):
     """Returns a BatchAllReduceAlgorithm from a Params tuple."""
     if params.all_reduce_spec:
-        gpu_indices = [i for i in range(params.num_gpus)]
+        gpu_indices = [i for i in range(num_gpus)]
         return AllReduceSpecAlgorithm(params.all_reduce_spec, gpu_indices,
                                       params.agg_small_grads_max_bytes,
                                       params.agg_small_grads_max_group)

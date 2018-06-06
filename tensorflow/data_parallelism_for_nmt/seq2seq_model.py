@@ -17,68 +17,17 @@ from utils import get_available_gpus
 
 __all__ = [
     "Seq2SeqModel",
-    "hparams",
 ]
-
-hparams = tf.contrib.training.HParams(
-    src_file_name="data/train.en",
-    tgt_file_name="data/train.de",
-    src_vocab_file="data/vocab.50K.en",
-    tgt_vocab_file="data/vocab.50K.de",
-    src_vocab_size=50000,
-    tgt_vocab_size=50000,
-    bos="<s>",
-    eos="</s>",
-    unk_id=0,
-    src_max_len=None,
-    tgt_max_len=None,
-    num_parallel_calls=4,
-    num_buckets=5,
-    output_buffer_size=None,
-    disable_shuffle=False,
-    # when using multi-gpu cards, this means bath size per card.
-    batch_size=360,
-
-    # hyper parameters for model topology
-    time_major=False,
-    dropout=0.,
-    unit_type="lstm",
-    num_units=512,
-    forget_bias=1.,
-    embedding_dim=512,
-    encoder_type="bi",
-    num_encoder_layers=4,
-    # TODO(caoying) The current implementation requries encoder and decoder has
-    # the same number RNN cells.
-    num_decoder_layers=4,
-    optimizer="adam",
-    learning_rate=0.001,
-    num_keep_ckpts=5,
-    max_gradient_norm=5.,
-
-    # parameter server places
-    variable_update="replicated",
-    # variable_update="parameter_server",
-    param_server_device="gpu",
-    local_parameter_device="gpu",
-
-    # used for all reduced algorithm
-    num_gpus=len(get_available_gpus()),
-    variable_consistency="strong",
-    gradient_repacking=4,
-    all_reduce_spec="nccl",
-    agg_small_grads_max_bytes=0,
-    agg_small_grads_max_group=10, )
 
 
 class Seq2SeqModel(object):
     def __init__(self,
-                 num_gpus,
                  hparams,
                  mode=tf.contrib.learn.ModeKeys.TRAIN,
                  worker_prefix=""):
         self.params = hparams
-        self.num_gpus = num_gpus
+        self.num_gpus = len(get_available_gpus())
+
         # NOTE: batch size passed to get_iterator here is batch size for a single
         # GPU card. the total batch size is num_splits *  hparams.batch_size
         self.iterator = get_iterator(
@@ -87,9 +36,9 @@ class Seq2SeqModel(object):
             src_vocab_file=hparams.src_vocab_file,
             tgt_vocab_file=hparams.tgt_vocab_file,
             batch_size=hparams.batch_size,
-            num_splits=num_gpus,
+            num_splits=self.num_gpus,
             disable_shuffle=True,
-            output_buffer_size=num_gpus * 1000 * hparams.batch_size)
+            output_buffer_size=self.num_gpus * 1000 * self.params.batch_size)
 
         self.word_count = tf.reduce_sum(
             self.iterator.source_sequence_length) + tf.reduce_sum(
@@ -240,7 +189,7 @@ class Seq2SeqModel(object):
                     d, gradient_state)
 
             #TODO(caoying): add gradient clipping.
-            self.learning_rate = tf.constant(hparams.learning_rate)
+            self.learning_rate = tf.constant(self.params.learning_rate)
             opt = tf.train.AdamOptimizer(self.learning_rate)
 
             loss_scale_params = variable_mgr_util.AutoLossScaleParams(

@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 #coding=utf-8
 from __future__ import division
-
+import sys
+import argparse
 import time
 import pdb
 
 import tensorflow as tf
 from tensorflow.python.client import timeline
 
-from seq2seq_model import Seq2SeqModel, hparams
-from utils import get_available_gpus
+from seq2seq_model import Seq2SeqModel
+from utils import get_available_gpus, add_arguments, create_hparams
 
 ENABLE_PROFILE = False
 SINGLE_CARD_SPEED = 35990.222
@@ -27,7 +28,7 @@ def make_config():
     return config
 
 
-def profiling_train(model):
+def profiling_train(model, config):
     builder = tf.profiler.ProfileOptionBuilder
     opts = builder(builder.time_and_memory()).order_by("micros").build()
 
@@ -86,7 +87,7 @@ def profiling_train(model):
                     continue
 
 
-def train(model):
+def train(model, config):
     sv = tf.train.Supervisor(
         is_chief=True,
         logdir="train_log",
@@ -128,8 +129,8 @@ def train(model):
                              speed / SINGLE_CARD_SPEED)
 
                     print(("|gpu number|total time|speed|speedup ratio|\n"
-                           "|%d|%.3f|%.3f|%.2f|") % (num_gpus, time_elapsed,
-                                                     speed, ratio))
+                           "|%d|%.3f|%.3f|%.2f|") %
+                          (model.num_gpus, time_elapsed, speed, ratio))
                     break
 
             except tf.errors.OutOfRangeError:
@@ -138,14 +139,22 @@ def train(model):
                 continue
 
 
-if __name__ == "__main__":
-    num_gpus = len(get_available_gpus())
-    print("num_gpus = %d, batch size = %d" % (num_gpus,
-                                              hparams.batch_size * num_gpus))
-    model = Seq2SeqModel(num_gpus, hparams)
+def main(unused_argv):
+    hparams = create_hparams(FLAGS)
+    model = Seq2SeqModel(hparams)
+
+    print("num_gpus = %d, batch size = %d" %
+          (model.num_gpus, hparams.batch_size * model.num_gpus))
     config = make_config()
 
     if ENABLE_PROFILE:
-        profiling_train(model)
+        profiling_train(model, config)
     else:
-        train(model)
+        train(model, config)
+
+
+if __name__ == "__main__":
+    param_parser = argparse.ArgumentParser()
+    add_arguments(param_parser)
+    FLAGS, unparsed = param_parser.parse_known_args()
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

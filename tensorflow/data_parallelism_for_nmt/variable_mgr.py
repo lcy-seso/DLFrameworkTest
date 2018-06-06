@@ -231,7 +231,7 @@ class VariableMgrLocalReplicated(VariableMgr):
             device_grads_tmp.append(tmp_vars)
 
         algorithm = batch_allreduce.algorithm_from_params(
-            self.model_helper.params)
+            self.model_helper.params, self.model_helper.num_gpus)
         reduced_grads, self._warmup_ops = algorithm.batch_all_reduce(
             grads_to_reduce, self.model_helper.params.gradient_repacking,
             compact_grads, defer_grads)
