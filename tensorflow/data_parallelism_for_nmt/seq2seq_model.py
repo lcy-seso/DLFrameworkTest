@@ -84,7 +84,7 @@ class Seq2SeqModel(object):
         self.global_step_device = self.cpu_device
 
         self.fetches = self.make_data_parallel(
-            self.build_mode_replica,
+            self.build_model_replica,
             hparams=hparams,
             source=self.source,
             target_input=self.target_input,
@@ -149,7 +149,7 @@ class Seq2SeqModel(object):
         """
 
         with tf.device(self.devices[rel_device_num]):
-            logits, loss, final_context_state = self.build_mode_replica(
+            logits, loss, final_context_state = self.build_model_replica(
                 source=inputs["source"],
                 target_input=inputs["target_input"],
                 target_output=inputs["target_output"],
@@ -208,14 +208,14 @@ class Seq2SeqModel(object):
         fetches["average_loss"] = average_loss / tf.to_float(self.batch_size)
         return fetches
 
-    def build_mode_replica(self,
-                           source,
-                           target_input,
-                           target_output,
-                           source_sequence_length,
-                           target_sequence_length,
-                           hparams,
-                           dtype=tf.float32):
+    def build_model_replica(self,
+                            source,
+                            target_input,
+                            target_output,
+                            source_sequence_length,
+                            target_sequence_length,
+                            hparams,
+                            dtype=tf.float32):
 
         self.output_layer = Dense(
             hparams.tgt_vocab_size, use_bias=False, name="output_projection")
