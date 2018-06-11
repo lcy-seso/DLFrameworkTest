@@ -10,14 +10,97 @@ from tensorflow.contrib.seq2seq import *
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.util import nest
 
+from tensorflow.python.framework import dtypes
+from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
+from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
+
 import variable_mgr
 import variable_mgr_util
 from iterator_helper import get_iterator
 from utils import get_available_gpus
 
+CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
+CUDNN_LSTM_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_LSTM_PARAMS_PER_LAYER
+CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
+CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
+
 __all__ = [
     "Seq2SeqModel",
 ]
+
+
+class CudnnRNNModel(object):
+    def __init__(self,
+                 inputs,
+                 rnn_mode,
+                 num_layers,
+                 num_units,
+                 input_size,
+                 initial_state=None,
+                 direction=CUDNN_RNN_UNIDIRECTION,
+                 dropout=0.,
+                 dtype=dtypes.float32,
+                 training=False,
+                 seed=None,
+                 kernel_initializer=None,
+                 bias_initializer=None):
+        if rnn_mode == "cudnn_lstm":
+            model_fn = cudnn_rnn.CudnnLSTM
+        else:
+            #(TODO) support other cudnn RNN ops.
+            raise NotImplementedError(
+                "Invalid rnn_mode: %s. Not implemented yet." % rnn_mode)
+
+        if initial_state is not None:
+            assert isinstance(initial_state, tuple)
+
+        self._initial_state = initial_state
+
+        self._rnn = model_fn(
+            num_layers,
+            num_units,
+            direction=direction,
+            dropout=dropout,
+            dtype=dtype,
+            seed=seed,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer)
+
+        # parameter passed to biuld is the shape of input Tensor.
+        # self._rnn.build([None, None, input_size])
+        self._rnn.build([100, 360, input_size])
+
+        # self._outputs is a tensor of shape:
+        # [seq_len, batch_size, num_directions * num_units]
+        # self._output_state is a tensor of shape:
+        # [num_layers * num_dirs, batch_size, num_units]
+
+        self._outputs, self._output_state = self._rnn(
+            inputs, initial_state=self._initial_state, training=training)
+
+    @property
+    def inputs(self):
+        return self._inputs
+
+    @property
+    def initial_state(self):
+        return self._initial_state
+
+    @property
+    def outputs(self):
+        return self._outputs
+
+    @property
+    def output_state(self):
+        return self._output_state
+
+    @property
+    def rnn(self):
+        return self._rnn
+
+    @property
+    def total_sum(self):
+        return self._AddUp(self.outputs, self.output_state)
 
 
 class Seq2SeqModel(object):
@@ -314,7 +397,34 @@ class Seq2SeqModel(object):
                 hparams.src_vocab_size, dtype)
 
             # Encoder_outputs: [batch_size, max_time, num_units]
-            if hparams.encoder_type == "uni":
+            if hparams.encoder_type == "cudnn_lstm":
+                if not hparams.time_major:
+                    # NOTE: inputs of the cudnn_lstm should be time major:
+                    # [sequence_length, batch_size, hidden_dim]
+                    encoder_emb_inp = tf.transpose(
+                        encoder_emb_inp, perm=[1, 0, 2])
+
+                # TODO: hard code batch size and sequence length for current
+                # experiment.
+                rnn = CudnnRNNModel(
+                    inputs=encoder_emb_inp,
+                    rnn_mode=hparams.encoder_type,
+                    num_layers=(hparams.num_encoder_layers
+                                if hparams.direction == "uni" else
+                                hparams.num_encoder_layers / 2),
+                    num_units=hparams.num_units,
+                    input_size=encoder_emb_inp.get_shape().as_list()[-1],
+                    direction=(CUDNN_RNN_UNIDIRECTION
+                               if hparams.direction == "uni" else
+                               CUDNN_RNN_BIDIRECTION),
+                    dropout=hparams.dropout,
+                    dtype=dtypes.float32,
+                    training=True)  #TODO: support inference and generation.
+
+                encoder_outputs = rnn._outputs
+                encoder_state = rnn._output_state
+
+            elif hparams.encoder_type == "uni":
                 cell = self._build_rnn_cell(
                     num_layers=hparams.num_encoder_layers,
                     unit_type=hparams.unit_type,
@@ -381,11 +491,37 @@ class Seq2SeqModel(object):
 
         return cell, decoder_initial_state
 
+    def _build_cudnn_rnn_decoder(self, hparams, encoder_state, decoder_emb,
+                                 dtype):
+        if not hparams.time_major:
+            # NOTE: inputs of the cudnn_lstm should be time major:
+            # [sequence_length, batch_size, hidden_dim]
+            decoder_emb = tf.transpose(decoder_emb, perm=[1, 0, 2])
+
+        rnn = CudnnRNNModel(
+            inputs=decoder_emb,
+            rnn_mode=hparams.encoder_type,
+            num_layers=hparams.num_decoder_layers,
+            num_units=hparams.num_units,
+            input_size=decoder_emb.get_shape().as_list()[-1],
+            direction=CUDNN_RNN_UNIDIRECTION,
+            initial_state=encoder_state,
+            dropout=hparams.dropout,
+            dtype=dtypes.float32,
+            training=True)  #TODO: support inference and generation.
+
+        outputs = (rnn.outputs if hparams.time_major else tf.transpose(
+            rnn.outputs, perm=[1, 0, 2]))
+
+        logits = self.output_layer(outputs)
+        return logits
+
     def _build_decoder(self, hparams, encoder_outputs, encoder_state,
                        source_sequence_length, target_input,
                        target_sequence_length, dtype):
 
         with tf.variable_scope("decoder") as decoder_scope:
+
             cell, decoder_initial_state = self._build_decoder_cell(
                 hparams, encoder_outputs, encoder_state)
 
@@ -397,6 +533,14 @@ class Seq2SeqModel(object):
                     target_input, "tgt_embedding", hparams.embedding_dim,
                     hparams.tgt_vocab_size, dtype)
 
+            if hparams.encoder_type == "cudnn_lstm":
+                # (TODO): Is it possible that in the encoder-decoder
+                # architecture, use cudnn lstm to implement encoder and use
+                # dynamic_rnn to implement decoder.
+                logits = self._build_cudnn_rnn_decoder(hparams, encoder_state,
+                                                       decoder_emb_inp, dtype)
+                final_context_state = None
+            else:
                 # Helper
                 helper = tf.contrib.seq2seq.TrainingHelper(
                     decoder_emb_inp,
@@ -416,9 +560,6 @@ class Seq2SeqModel(object):
                      swap_memory=True,
                      scope=decoder_scope)
                 logits = self.output_layer(outputs.rnn_output)
-            else:
-                #TODO(caoying): not implemented yet.
-                raise NotImplementedError("To be implemented")
 
         return logits, final_context_state
 

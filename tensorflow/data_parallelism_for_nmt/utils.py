@@ -49,7 +49,21 @@ def add_arguments(parser):
     parser.add_argument("--num_units", type=int, default=512, help="")
     parser.add_argument("--forget_bias", type=int, default=1., help="")
     parser.add_argument("--embedding_dim", type=int, default=512, help="")
-    parser.add_argument("--encoder_type", type=str, default="bi", help="")
+
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="bi",
+        help="Valid options are: uni, bi, cudnn_lstm.")
+    parser.add_argument(
+        "--direction",
+        type=str,
+        default="uni",
+        help=("This parameter is only valid "
+              "when encoder_type set to cudnn rnn ops, "
+              "indicating to use unidirection lstm (uni) or "
+              "to use bidirection lstm (bi)."))
+
     parser.add_argument("--num_encoder_layers", type=int, default=4, help="")
     parser.add_argument("--num_decoder_layers", type=int, default=4, help="")
     parser.add_argument("--optimizer", type=str, default="adam", help="")
@@ -104,6 +118,7 @@ def create_hparams(flags):
         forget_bias=flags.forget_bias,
         embedding_dim=flags.embedding_dim,
         encoder_type=flags.encoder_type,
+        direction=flags.direction,
         num_encoder_layers=flags.num_encoder_layers,
         # TODO: The current implementation requries encoder and decoder has
         # the same number RNN cells.

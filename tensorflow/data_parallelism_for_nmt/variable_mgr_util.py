@@ -105,6 +105,10 @@ class ParamServerDeviceSetter(object):
         device_name = self.ps_devices[device_index]
 
         var_size = op.outputs[0].get_shape().num_elements()
+
+        #(FIXME) hard parameter size for cudnn LSTM.
+        if var_size is None:
+            var_size = 512 * 512 * 4 * 4
         self.ps_sizes[device_index] += var_size
 
         return device_name
