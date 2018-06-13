@@ -63,6 +63,18 @@ def add_arguments(parser):
               "when encoder_type set to cudnn rnn ops, "
               "indicating to use unidirection lstm (uni) or "
               "to use bidirection lstm (bi)."))
+    parser.add_argument(
+        "--use_synthetic_data",
+        type=bool,
+        default=False,
+        help="Use synthetic data in the test to avoid the IO process.")
+    parser.add_argument(
+        "--independent_replica",
+        type=bool,
+        default=False,
+        help=("If this flag is set True, each model replica works "
+              "totally independent. NOTE: this parameter only works "
+              "when variable_update is set to replicated."))
 
     parser.add_argument("--num_encoder_layers", type=int, default=4, help="")
     parser.add_argument("--num_decoder_layers", type=int, default=4, help="")
@@ -120,6 +132,7 @@ def create_hparams(flags):
         encoder_type=flags.encoder_type,
         direction=flags.direction,
         num_encoder_layers=flags.num_encoder_layers,
+
         # TODO: The current implementation requries encoder and decoder has
         # the same number RNN cells.
         num_decoder_layers=flags.num_decoder_layers,
@@ -127,9 +140,11 @@ def create_hparams(flags):
         learning_rate=flags.learning_rate,
         num_keep_ckpts=flags.num_keep_ckpts,
         max_gradient_norm=flags.max_gradient_norm,
+        use_synthetic_data=flags.use_synthetic_data,
 
         # parameter server places
         variable_update=flags.variable_update,
+        independent_replica=flags.independent_replica,
         param_server_device=flags.param_server_device,
         local_parameter_device=flags.local_parameter_device,
 

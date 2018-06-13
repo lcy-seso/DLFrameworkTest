@@ -16,7 +16,7 @@ from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 
 import variable_mgr
 import variable_mgr_util
-from iterator_helper import get_iterator
+from iterator_helper import get_iterator, get_synthetic_data
 from utils import get_available_gpus
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -67,8 +67,7 @@ class CudnnRNNModel(object):
             bias_initializer=bias_initializer)
 
         # parameter passed to biuld is the shape of input Tensor.
-        # self._rnn.build([None, None, input_size])
-        self._rnn.build([100, 360, input_size])
+        self._rnn.build([None, None, input_size])
 
         # self._outputs is a tensor of shape:
         # [seq_len, batch_size, num_directions * num_units]
@@ -111,17 +110,31 @@ class Seq2SeqModel(object):
         self.params = hparams
         self.num_gpus = len(get_available_gpus())
 
-        # NOTE: batch size passed to get_iterator here is batch size for a single
-        # GPU card. the total batch size is num_splits *  hparams.batch_size
-        self.iterator = get_iterator(
-            src_file_name=hparams.src_file_name,
-            tgt_file_name=hparams.tgt_file_name,
-            src_vocab_file=hparams.src_vocab_file,
-            tgt_vocab_file=hparams.tgt_vocab_file,
-            batch_size=hparams.batch_size,
-            num_splits=self.num_gpus,
-            disable_shuffle=True,
-            output_buffer_size=self.num_gpus * 1000 * self.params.batch_size)
+        # devices for computation workers
+        self.raw_devices = [
+            "%s/%s:%i" % (worker_prefix, hparams.local_parameter_device, i)
+            for i in xrange(self.num_gpus)
+        ]
+        if hparams.use_synthetic_data:
+            self.iterator = get_synthetic_data(
+                hparams.src_max_len, hparams.batch_size, hparams.time_major,
+                hparams.src_vocab_size, hparams.tgt_vocab_size,
+                self.raw_devices)
+        else:
+            # NOTE: batch size passed to get_iterator here is batch size for a
+            # single GPU card. the total batch size is:
+            # num_splits *  hparams.batch_size
+
+            self.iterator = get_iterator(
+                src_file_name=hparams.src_file_name,
+                tgt_file_name=hparams.tgt_file_name,
+                src_vocab_file=hparams.src_vocab_file,
+                tgt_vocab_file=hparams.tgt_vocab_file,
+                batch_size=hparams.batch_size,
+                num_splits=self.num_gpus,
+                disable_shuffle=True,
+                output_buffer_size=self.num_gpus * 1000 *
+                self.params.batch_size)
 
         self.word_count = tf.reduce_sum(
             self.iterator.source_sequence_length) + tf.reduce_sum(
@@ -142,11 +155,6 @@ class Seq2SeqModel(object):
         self.local_parameter_device = hparams.local_parameter_device
         # Device to use for ops that need to always run on the local worker"s CPU.
         self.cpu_device = "%s/cpu:0" % worker_prefix
-        # devices for computation workers
-        self.raw_devices = [
-            "%s/%s:%i" % (worker_prefix, hparams.local_parameter_device, i)
-            for i in xrange(self.num_gpus)
-        ]
 
         if hparams.variable_update == "replicated":
             self.variable_mgr = variable_mgr.VariableMgrLocalReplicated(
@@ -263,11 +271,13 @@ class Seq2SeqModel(object):
 
         # gradient_state is the merged gradient.
         apply_gradient_devices, gradient_state = (
-            self.variable_mgr.preprocess_device_grads(device_grads))
+            self.variable_mgr.preprocess_device_grads(
+                device_grads, self.params.independent_replica))
 
         for d, device in enumerate(apply_gradient_devices):
             with tf.device(device):
-                average_loss = tf.reduce_mean(losses)
+                average_loss = (losses[d] if self.params.independent_replica
+                                else tf.reduce_sum(losses))
                 avg_grads = self.variable_mgr.get_gradients_to_apply(
                     d, gradient_state)
 
@@ -288,7 +298,9 @@ class Seq2SeqModel(object):
                 loss_scale_params)
 
         fetches["train_op"] = tf.group(training_ops)
-        fetches["average_loss"] = average_loss / tf.to_float(self.batch_size)
+        fetches["average_loss"] = (average_loss
+                                   if self.params.independent_replica else
+                                   average_loss / tf.to_float(self.batch_size))
         return fetches
 
     def build_model_replica(self,

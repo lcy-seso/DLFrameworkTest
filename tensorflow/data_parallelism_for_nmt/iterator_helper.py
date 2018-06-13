@@ -17,6 +17,79 @@ class BatchedInput(
     pass
 
 
+def get_synthetic_data(seq_len, batch_size, time_major, src_vocab_size,
+                       tgt_vocab_size, devices):
+    def __gen_one_part(seq_len, batch_size, time_major, src_vocab_size,
+                       tgt_vocab_size, device):
+        with tf.device(device):
+            input_shape = ([seq_len, batch_size]
+                           if time_major else [batch_size, seq_len])
+
+            src_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=src_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src")
+
+            tgt_input_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=tgt_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="tgt_input")
+
+            tgt_output_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=tgt_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="tgt_output")
+
+            len_shape = [batch_size]
+            src_seq_len = tf.random_uniform(
+                len_shape,
+                minval=seq_len,
+                maxval=seq_len + 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src_len")
+            tgt_seq_len = tf.random_uniform(
+                len_shape,
+                minval=seq_len,
+                maxval=seq_len + 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src_len")
+
+            return (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len,
+                    tgt_seq_len)
+
+    num_splits = len(devices)
+    src_ids = [[] for _ in range(num_splits)]
+    tgt_input_ids = [[] for _ in range(num_splits)]
+    tgt_output_ids = [[] for _ in range(num_splits)]
+    src_seq_len = [[] for _ in range(num_splits)]
+    tgt_seq_len = [[] for _ in range(num_splits)]
+
+    for i, device in enumerate(devices):
+        (src_ids[i], tgt_input_ids[i], tgt_output_ids[i], src_seq_len[i],
+         tgt_seq_len[i]) = __gen_one_part(seq_len, batch_size, time_major,
+                                          src_vocab_size, tgt_vocab_size,
+                                          device)
+
+    return BatchedInput(
+        initializer=None,
+        source=src_ids,
+        target_input=tgt_input_ids,
+        target_output=tgt_output_ids,
+        source_sequence_length=src_seq_len,
+        target_sequence_length=tgt_seq_len)
+
+
 def get_iterator(src_file_name,
                  tgt_file_name,
                  src_vocab_file,
@@ -149,26 +222,40 @@ def get_iterator(src_file_name,
 
 
 if __name__ == "__main__":
+    use_synthetic_data = True
+
     src_file_name = "data/train.en"
     tgt_file_name = "data/train.de"
     src_vocab_file = "data/vocab.50K.en"
     tgt_vocab_file = "data/vocab.50K.de"
 
+    seq_len = 10
+    src_vocab_size = 100
+    tgt_vocab_size = 100
+    time_major = True
+
     batch_size = 3 * 5
     num_splits = 3
 
-    iterator = get_iterator(
-        src_file_name,
-        tgt_file_name,
-        src_vocab_file,
-        tgt_vocab_file,
-        batch_size,
-        num_splits=num_splits)
+    if use_synthetic_data:
+        iterator = get_synthetic_data(seq_len, batch_size, time_major,
+                                      src_vocab_size, tgt_vocab_size,
+                                      num_splits)
+    else:
+        iterator = get_iterator(
+            src_file_name,
+            tgt_file_name,
+            src_vocab_file,
+            tgt_vocab_file,
+            batch_size,
+            num_splits=num_splits)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        sess.run(tf.tables_initializer())
-        sess.run(iterator.initializer)
+
+        if not use_synthetic_data:
+            sess.run(tf.tables_initializer())
+            sess.run(iterator.initializer)
 
         for i in range(5):
             res = sess.run(iterator.source + iterator.target_input + iterator.

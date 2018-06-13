@@ -38,7 +38,7 @@ class VariableMgr(object):
         del device_num  # unused by this implementation
         assert False, "Must be implemented in subclass"
 
-    def preprocess_device_grads(self, device_grads):
+    def preprocess_device_grads(self, device_grads, independent=False):
         """Preprocess the device gradients prior to applying them.
 
         Args:
@@ -53,6 +53,7 @@ class VariableMgr(object):
           applied with get_gradients_to_apply() and append_apply_gradients_ops().
         """
         del device_grads  # unused by this implementation
+        del independent  # unused by this implementation
         assert False, "Must be implemented in subclass"
 
     def get_gradients_to_apply(self, device_num, gradient_state):
@@ -138,7 +139,8 @@ class VariableMgrLocalFetchFromPS(VariableMgr):
         return tf.variable_scope(
             "v", reuse=bool(device_num), use_resource=self.use_resource_vars)
 
-    def preprocess_device_grads(self, device_grads):
+    def preprocess_device_grads(self, device_grads, independent=False):
+        del independent  # unused by this function.
         return ([self.model_helper.param_server_device], device_grads)
 
     def get_gradients_to_apply(self, device_num, gradient_state):
@@ -201,7 +203,11 @@ class VariableMgrLocalReplicated(VariableMgr):
             reuse=False,
             use_resource=self.use_resource_vars)
 
-    def preprocess_device_grads(self, device_grads):
+    def preprocess_device_grads(self, device_grads, independent=False):
+        if independent:
+            print("Each model replica is totally independent.")
+            return self.model_helper.devices, device_grads
+
         compact_grads = False
         defer_grads = (
             self.model_helper.params.variable_consistency == "relaxed")
