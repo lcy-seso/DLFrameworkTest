@@ -139,19 +139,23 @@
 
 - **Results**
 
-    |GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
+    |GPU number|batch size per GPU|total time to run 50 batches (s)|processing speed (words/second)|speed-up ratio|
     |:--|:--|:--|:--|:--|
     |1|128|44.519|28895.548|
     |2|128|58.158|44238.325|1.53|
     |3|128|77.895|49543.760|1.71|
     |4|128|92.629|55550.522|1.92|
 
-    |GPU number|batch size per GPU|total time (s)|processing speed (words/second)|speed-up ratio|
+    |GPU number|batch size per GPU|total time to run 20 batches(s)|processing speed (words/second)|speed-up ratio|
     |:--|:--|:--|:--|:--|
-    |1|360|92.718|39021.362|
-    |2|360|103.826|69693.418|1.78|
-    |3|360|122.760|88416.662|2.26|
-    |4|360|144.734|99990.391|2.56|
+    |1|360|40.574|35668.346||
+    |2|360|47.222|61293.843|1.72|
+    |3|360|58.628|74052.914|2.08|
+    |4|360|57.281|75795.220|2.12|
+    |5|360|66.166|87488.569|2.45|
+    |6|360|83.896|103499.177|2.90|
+    |7|360|100.488|100812.133|2.83|
+    |8|360|108.465|106740.810|2.99|
 
 ### Conclusions
 
