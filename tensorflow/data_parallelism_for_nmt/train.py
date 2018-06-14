@@ -143,7 +143,8 @@ def train(model, config, hparams):
                     break
 
             except tf.errors.OutOfRangeError:
-                sess.run(model.iterator.initializer)
+                if not hparams.use_synthetic_data:
+                    sess.run(model.iterator.initializer)
                 batch_id = 0
                 continue
 

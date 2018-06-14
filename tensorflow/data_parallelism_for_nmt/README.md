@@ -12,3 +12,4 @@
 - [The performance of data parallelism using PS mode](docs/test_ps_mode.md)
 - [The performance of data parallelism using all-reduce algorithms](docs/test_allreduce_algorithm.md)
 - [The performance of data parallelism using PS mode and cudnn_lstm for encoder and decoder](docs/test_cudnn_lstm.md)
+- [The performance of totally independent model replica](docs/test_independent_model_replica.md)
