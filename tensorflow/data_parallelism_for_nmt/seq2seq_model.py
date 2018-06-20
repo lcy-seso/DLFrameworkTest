@@ -424,7 +424,7 @@ class Seq2SeqModel(object):
                     rnn_mode=hparams.encoder_type,
                     num_layers=(hparams.num_encoder_layers
                                 if hparams.direction == "uni" else
-                                hparams.num_encoder_layers / 2),
+                                int(hparams.num_encoder_layers / 2)),
                     num_units=hparams.num_units,
                     input_size=encoder_emb_inp.get_shape().as_list()[-1],
                     direction=(CUDNN_RNN_UNIDIRECTION
