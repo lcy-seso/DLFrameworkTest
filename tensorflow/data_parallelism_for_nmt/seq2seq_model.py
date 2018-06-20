@@ -188,7 +188,7 @@ class Seq2SeqModel(object):
 
         local_var_init_op = tf.local_variables_initializer()
         table_init_ops = (tf.tables_initializer()
-                          if self.params.use_synthetic_data else None)
+                          if not self.params.use_synthetic_data else None)
         variable_mgr_init_ops = [local_var_init_op]
         if table_init_ops:
             variable_mgr_init_ops.extend([table_init_ops])
