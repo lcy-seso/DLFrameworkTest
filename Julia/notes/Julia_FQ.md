@@ -225,6 +225,140 @@ end
 
 **the maximum efficiency is typically achieved when the output array of a vectorized operation is [pre-allocated](https://docs.julialang.org/en/stable/manual/performance-tips/#Pre-allocating-outputs-1).**
 
+for "vectorized" (element-wise) functions, the convenient syntax `x .= f.(y)` can be used for in-place operations with fused loops and no temporary arrays
+
+## Control Flow
+
+### Compound Expressions
+
+- Compound expression is a single expression which evaluates several subexpressions in order.
+- Accomplished by `begin` blocks and `(;)` chains
+
+    ```julia
+    julia> z = begin
+            x = 1
+            y = 2
+            x + y
+        end
+    3
+    ```
+
+    ```julia
+    julia> z = (x = 1; y = 2; x + y)
+
+    3
+    ```
+
+### Conditional Evaluation
+
+- `if` blocks also return a value.
+
+    ```julia
+    julia> x = 3
+    3
+
+    julia> if x > 0
+            "positive!"
+        else
+            "negative..."
+        end
+    "positive!"
+    ```
+---
+
+## Metaprogramming
+
+_**Expression**_
+
+Julia represents its own code as a data structure of the language itself.
+
+*  Since code is represented by objects that can be created and manipulated from within the language, it is possible for a program to transform and generate its own code.
+* This allows true Lisp-style macros operating at the level of abstract syntax trees.
+
+1. Every Julia program starts life as a string.
+1. The next step is to parse each string into an object called an expression, represented by the Julia type `Expr`.
+ * `Expr` objects contain two parts:
+   1. `Symbol`
+   1. the expression arguments
+
+1. **Julia code is internally represented as a data structure that is accessible from the language itself.**
+1. In the context of an expression, symbols are used to indicate access to variables
+  * when an expression is evaluated, a symbol is replaced with the value bound to that symbol in the appropriate scope.
+
+---
+
+### `:` in Julia
+
+1. Create a [`Symbol`](https://docs.julialang.org/en/v0.6.3/manual/metaprogramming/#Symbols-1), an interned string used as one building-block of expressions.
+1. Create expression objects without using the explicit `Expr` constructor.
+
+---
+
+### Type System
+* _**Generic types can be parameterized, and the hierarchical relationships between types are explicitly declared, rather than implied by compatible structure**_.
+* _**Concrete types may not subtype each other**_: all concrete types are final, so no implementation is a subtype of any other.
+  * all concrete types are final and may **only** have abstract types as their supertypes.
+  * It turns out that being able to inherit behavior is much more important than being able to inherit structure
+  * inheriting both causes significant difficulties in traditional object-oriented languages.
+
+**From Julia's doc**
+
+1. _**There is no division between object and non-object values**_.
+    * all values in Julia are true objects having a type that belongs to a single, fully connected type graph, all nodes of which are equally first-class as types.
+
+1. _**There is no meaningful concept of a “compile-time type”**_.
+    * the only type a value has is its actual type when the program is running.
+    * This is called a “run-time type” in object-oriented languages where the combination of static compilation with polymorphism makes this distinction significant.
+
+1. _**Only values, not variables, have types**_.
+    * variables are simply names bound to values.
+
+1. _**Both abstract and concrete types can be parameterized by other types**_.
+
+    * They can also be parameterized by symbols, by values of any type for which `isbits()` returns true (essentially, things like numbers and bools that are stored like C types or structs with no pointers to other objects), and also by tuples thereof.
+    * Type parameters may be omitted when they do not need to be referenced or restricted.
+
+#### Type Declarations `::`
+
+* The `::` operator is appended to an expression computing a value, which is read as “is an instance of”.
+* It can be used anywhere to assert that the value of the expression on the left is an instance of the type on the right
+* usage of `::`
+  1. asserted into function/methods signatures
+
+     ```julia
+     f(x::Int8) = ...
+     ```
+  1. appended to a variable in a statement context:
+    * it declares the variable to always have the specified type
+    * Every value assigned to the variable will be converted to the declared type using `convert()`
+
+#### [Abstract Types](https://docs.julialang.org/en/release-0.4/manual/types/#abstract-types)
+
+- Abstract types cannot be instantiated.
+- Abstract types serve only as nodes in the type graph, thereby describing sets of related concrete types: those concrete types which are their descendants.
+- Abstract types allow the construction of a hierarchy of types, providing a context into which concrete types can fit
+
+The general syntaxes for declaring an abstract type are:
+
+```julia
+abstract «name»
+abstract «name» <: «supertype»
+```
+
+* When no supertype is given, the default supertype is `Any`.
+  * `Any` is a a predefined abstract type that all objects are instances of and all types are subtypes of.
+  * `Any` is at the apex of the type graph.
+* Julia also has a predefined abstract “bottom” type, at the nadir of the type graph: `Union{}`.
+  * no object is an instance of `Union{}` and all types are supertypes of `Union{}`.
+
+####  `<:` operator
+
+* `<:` means “is a subtype of”
+  1. used in declarations: declares the right-hand type to be an immediate supertype of the newly declared type.
+  1. used in expressions as a subtype operator: return true when its left operand is a subtype of its right operand.
+
+### [Composite Types](https://docs.julialang.org/en/release-0.4/manual/types/#abstract-types)
+
 ---
 
 ## My questions
