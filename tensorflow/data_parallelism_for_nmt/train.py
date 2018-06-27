@@ -12,18 +12,18 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-SINGLE_CARD_SPEED = None
+SINGLE_CARD_SPEED = 50021.720
 
 
 def make_config():
     config = tf.ConfigProto()
 
-    config.log_device_placement = True
+    config.log_device_placement = False
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
 
     config.intra_op_parallelism_threads = 0
-    config.inter_op_parallelism_threads = 0
+    config.inter_op_parallelism_threads = 56
     return config
 
 

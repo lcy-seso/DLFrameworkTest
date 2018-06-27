@@ -75,6 +75,11 @@ def add_arguments(parser):
         help=("If this flag is set True, each model replica works "
               "totally independent. NOTE: this parameter only works "
               "when variable_update is set to replicated."))
+    parser.add_argument(
+        "--prefetch_data_to_device",
+        type=bool,
+        default=False,
+        help=("Prefetch training data to device."))
 
     parser.add_argument("--num_encoder_layers", type=int, default=4, help="")
     parser.add_argument("--num_decoder_layers", type=int, default=4, help="")
@@ -147,6 +152,7 @@ def create_hparams(flags):
         independent_replica=flags.independent_replica,
         param_server_device=flags.param_server_device,
         local_parameter_device=flags.local_parameter_device,
+        prefetch_data_to_device=flags.prefetch_data_to_device,
 
         # used for all reduce algorithm
         variable_consistency=flags.variable_consistency,

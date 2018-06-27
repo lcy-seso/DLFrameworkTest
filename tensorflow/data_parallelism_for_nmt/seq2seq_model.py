@@ -16,7 +16,8 @@ from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 
 import variable_mgr
 import variable_mgr_util
-from iterator_helper import get_iterator, get_synthetic_data
+from iterator_helper import get_iterator, get_synthetic_data, \
+        build_prefetch_processing
 from utils import get_available_gpus
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -110,32 +111,15 @@ class Seq2SeqModel(object):
         self.params = hparams
         self.num_gpus = len(get_available_gpus())
 
+        # Device to use for ops that need to always run on the local worker"s CPU.
+        self.cpu_device = "%s/cpu:0" % worker_prefix
         # devices for computation workers
         self.raw_devices = [
             "%s/%s:%i" % (worker_prefix, hparams.local_parameter_device, i)
             for i in xrange(self.num_gpus)
         ]
-        if hparams.use_synthetic_data:
-            self.iterator = get_synthetic_data(
-                hparams.src_max_len, hparams.batch_size, hparams.time_major,
-                hparams.src_vocab_size, hparams.tgt_vocab_size,
-                self.raw_devices)
-        else:
-            # NOTE: batch size passed to get_iterator here is batch size for a
-            # single GPU card. the total batch size is:
-            # num_splits *  hparams.batch_size
 
-            self.iterator = get_iterator(
-                src_file_name=hparams.src_file_name,
-                tgt_file_name=hparams.tgt_file_name,
-                src_vocab_file=hparams.src_vocab_file,
-                tgt_vocab_file=hparams.tgt_vocab_file,
-                batch_size=hparams.batch_size,
-                num_splits=self.num_gpus,
-                disable_shuffle=True,
-                output_buffer_size=self.num_gpus * 1000 *
-                self.params.batch_size)
-
+        self.iterator = self.get_input_iterator(hparams)
         self.word_count = tf.reduce_sum(
             self.iterator.source_sequence_length) + tf.reduce_sum(
                 self.iterator.target_sequence_length)
@@ -153,8 +137,6 @@ class Seq2SeqModel(object):
         # trainable parameters
         self.param_server_device = hparams.param_server_device
         self.local_parameter_device = hparams.local_parameter_device
-        # Device to use for ops that need to always run on the local worker"s CPU.
-        self.cpu_device = "%s/cpu:0" % worker_prefix
 
         if hparams.variable_update == "replicated":
             self.variable_mgr = variable_mgr.VariableMgrLocalReplicated(
@@ -198,6 +180,39 @@ class Seq2SeqModel(object):
 
         self.saver = tf.train.Saver(
             tf.global_variables(), max_to_keep=hparams.num_keep_ckpts)
+
+    def get_input_iterator(self, hparams):
+        if hparams.use_synthetic_data:
+            iterator = get_synthetic_data(
+                hparams.src_max_len, hparams.batch_size, hparams.time_major,
+                hparams.src_vocab_size, hparams.tgt_vocab_size,
+                self.raw_devices)
+        else:
+            # NOTE: batch size passed to get_iterator here is batch size for a
+            # single GPU card. the total batch size is:
+            # num_splits *  hparams.batch_size
+
+            if hparams.prefetch_data_to_device:
+                iterator = build_prefetch_processing(
+                    cpu_device=self.cpu_device,
+                    gpu_devices=self.raw_devices,
+                    src_file_name=hparams.src_file_name,
+                    tgt_file_name=hparams.tgt_file_name,
+                    src_vocab_file=hparams.src_vocab_file,
+                    tgt_vocab_file=hparams.tgt_vocab_file,
+                    batch_size=hparams.batch_size)
+            else:
+                iterator = get_iterator(
+                    src_file_name=hparams.src_file_name,
+                    tgt_file_name=hparams.tgt_file_name,
+                    src_vocab_file=hparams.src_vocab_file,
+                    tgt_vocab_file=hparams.tgt_vocab_file,
+                    batch_size=hparams.batch_size,
+                    num_splits=self.num_gpus,
+                    disable_shuffle=True,
+                    output_buffer_size=self.num_gpus * 1000 *
+                    self.params.batch_size)
+        return iterator
 
     def make_data_parallel(self, fn, **kwargs):
         """ Wrapper for data parallelism.
