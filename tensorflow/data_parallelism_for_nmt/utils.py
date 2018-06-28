@@ -49,7 +49,38 @@ def add_arguments(parser):
     parser.add_argument("--num_units", type=int, default=512, help="")
     parser.add_argument("--forget_bias", type=int, default=1., help="")
     parser.add_argument("--embedding_dim", type=int, default=512, help="")
-    parser.add_argument("--encoder_type", type=str, default="bi", help="")
+
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="bi",
+        help="Valid options are: uni, bi, cudnn_lstm.")
+    parser.add_argument(
+        "--direction",
+        type=str,
+        default="uni",
+        help=("This parameter is only valid "
+              "when encoder_type set to cudnn rnn ops, "
+              "indicating to use unidirection lstm (uni) or "
+              "to use bidirection lstm (bi)."))
+    parser.add_argument(
+        "--use_synthetic_data",
+        type=bool,
+        default=False,
+        help="Use synthetic data in the test to avoid the IO process.")
+    parser.add_argument(
+        "--independent_replica",
+        type=bool,
+        default=False,
+        help=("If this flag is set True, each model replica works "
+              "totally independent. NOTE: this parameter only works "
+              "when variable_update is set to replicated."))
+    parser.add_argument(
+        "--prefetch_data_to_device",
+        type=bool,
+        default=False,
+        help=("Prefetch training data to device."))
+
     parser.add_argument("--num_encoder_layers", type=int, default=4, help="")
     parser.add_argument("--num_decoder_layers", type=int, default=4, help="")
     parser.add_argument("--optimizer", type=str, default="adam", help="")
@@ -104,7 +135,9 @@ def create_hparams(flags):
         forget_bias=flags.forget_bias,
         embedding_dim=flags.embedding_dim,
         encoder_type=flags.encoder_type,
+        direction=flags.direction,
         num_encoder_layers=flags.num_encoder_layers,
+
         # TODO: The current implementation requries encoder and decoder has
         # the same number RNN cells.
         num_decoder_layers=flags.num_decoder_layers,
@@ -112,11 +145,14 @@ def create_hparams(flags):
         learning_rate=flags.learning_rate,
         num_keep_ckpts=flags.num_keep_ckpts,
         max_gradient_norm=flags.max_gradient_norm,
+        use_synthetic_data=flags.use_synthetic_data,
 
         # parameter server places
         variable_update=flags.variable_update,
+        independent_replica=flags.independent_replica,
         param_server_device=flags.param_server_device,
         local_parameter_device=flags.local_parameter_device,
+        prefetch_data_to_device=flags.prefetch_data_to_device,
 
         # used for all reduce algorithm
         variable_consistency=flags.variable_consistency,

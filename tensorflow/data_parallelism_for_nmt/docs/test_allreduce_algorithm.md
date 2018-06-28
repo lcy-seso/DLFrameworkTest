@@ -1,3 +1,7 @@
+[TOC]
+
+_**NOTE: This test runs with `inter_op_parallelism_threads=0` which means TensorFlow automatically determines size of the thread pool. This setting causes problems. See more detail reason and data in [this test](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/inter_op_parallelism_threads_with_MKL.md).**_
+
 # Test Allreduce for NMT model
 
 - Data collected based on this commit [95e17f7](https://github.com/lcy-seso/dl_framework/tree/95e17f79d06939b4fc9e588fc084b6f554270640/tensorflow/data_parallelism_for_nmt)

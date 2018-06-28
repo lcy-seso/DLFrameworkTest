@@ -12,18 +12,18 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-SINGLE_CARD_SPEED = None
+SINGLE_CARD_SPEED = 50021.720
 
 
 def make_config():
     config = tf.ConfigProto()
 
-    config.log_device_placement = True
+    config.log_device_placement = False
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
 
     config.intra_op_parallelism_threads = 0
-    config.inter_op_parallelism_threads = 0
+    config.inter_op_parallelism_threads = 56
     return config
 
 
@@ -90,7 +90,7 @@ def profiling_train(model, config):
                     continue
 
 
-def train(model, config):
+def train(model, config, hparams):
     sv = tf.train.Supervisor(
         is_chief=True,
         logdir="train_log",
@@ -104,12 +104,16 @@ def train(model, config):
     with sv.managed_session(
             master="", config=config, start_standard_services=False) as sess:
 
+        writer = tf.summary.FileWriter("tb_log", sess.graph)
+
         pass_id = 0
         batch_id = 0
 
         start_time = time.time()
         total_word_count = 0
-        sess.run(model.iterator.initializer)
+
+        if not hparams.use_synthetic_data:
+            sess.run(model.iterator.initializer)
 
         while True:
             try:
@@ -131,13 +135,16 @@ def train(model, config):
                     ratio = (1. if SINGLE_CARD_SPEED is None else
                              speed / SINGLE_CARD_SPEED)
 
-                    print(("|gpu number|total time|speed|speedup ratio|\n"
-                           "|%d|%.3f|%.3f|%.2f|") %
-                          (model.num_gpus, time_elapsed, speed, ratio))
+                    print(("|gpu number|batch_size|total time|"
+                           "speed|speedup ratio|\n"
+                           "|%d|%d|%.3f|%.3f|%.2f|") %
+                          (model.num_gpus, hparams.batch_size, time_elapsed,
+                           speed, ratio))
                     break
 
             except tf.errors.OutOfRangeError:
-                sess.run(model.iterator.initializer)
+                if not hparams.use_synthetic_data:
+                    sess.run(model.iterator.initializer)
                 batch_id = 0
                 continue
 
@@ -153,7 +160,7 @@ def main(unused_argv):
     if hparams.enable_profile:
         profiling_train(model, config)
     else:
-        train(model, config)
+        train(model, config, hparams)
 
 
 if __name__ == "__main__":

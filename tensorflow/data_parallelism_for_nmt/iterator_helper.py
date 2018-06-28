@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 #coding=utf-8
+import sys
 import collections
 import pdb
 
 import tensorflow as tf
+from tensorflow.python.framework import function
+from tensorflow.contrib.data.python.ops import prefetching_ops
 
 __all__ = [
     "get_iterator",
+    "build_prefetch_processing",
 ]
 
 
@@ -17,21 +21,94 @@ class BatchedInput(
     pass
 
 
-def get_iterator(src_file_name,
-                 tgt_file_name,
-                 src_vocab_file,
-                 tgt_vocab_file,
-                 batch_size,
-                 bos="<s>",
-                 eos="</s>",
-                 unk_id=0,
-                 src_max_len=None,
-                 tgt_max_len=None,
-                 num_parallel_calls=4,
-                 num_buckets=5,
-                 output_buffer_size=None,
-                 disable_shuffle=False,
-                 num_splits=1):
+def get_synthetic_data(seq_len, batch_size, time_major, src_vocab_size,
+                       tgt_vocab_size, devices):
+    def __gen_one_part(seq_len, batch_size, time_major, src_vocab_size,
+                       tgt_vocab_size, device):
+        with tf.device(device):
+            input_shape = ([seq_len, batch_size]
+                           if time_major else [batch_size, seq_len])
+
+            src_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=src_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src")
+
+            tgt_input_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=tgt_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="tgt_input")
+
+            tgt_output_ids = tf.random_uniform(
+                input_shape,
+                minval=0,
+                maxval=tgt_vocab_size - 1,
+                dtype=tf.int32,
+                seed=None,
+                name="tgt_output")
+
+            len_shape = [batch_size]
+            src_seq_len = tf.random_uniform(
+                len_shape,
+                minval=seq_len,
+                maxval=seq_len + 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src_len")
+            tgt_seq_len = tf.random_uniform(
+                len_shape,
+                minval=seq_len,
+                maxval=seq_len + 1,
+                dtype=tf.int32,
+                seed=None,
+                name="src_len")
+
+            return (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len,
+                    tgt_seq_len)
+
+    num_splits = len(devices)
+    src_ids = [[] for _ in range(num_splits)]
+    tgt_input_ids = [[] for _ in range(num_splits)]
+    tgt_output_ids = [[] for _ in range(num_splits)]
+    src_seq_len = [[] for _ in range(num_splits)]
+    tgt_seq_len = [[] for _ in range(num_splits)]
+
+    for i, device in enumerate(devices):
+        (src_ids[i], tgt_input_ids[i], tgt_output_ids[i], src_seq_len[i],
+         tgt_seq_len[i]) = __gen_one_part(seq_len, batch_size, time_major,
+                                          src_vocab_size, tgt_vocab_size,
+                                          device)
+
+    return BatchedInput(
+        initializer=None,
+        source=src_ids,
+        target_input=tgt_input_ids,
+        target_output=tgt_output_ids,
+        source_sequence_length=src_seq_len,
+        target_sequence_length=tgt_seq_len)
+
+
+def create_iterator(src_file_name,
+                    tgt_file_name,
+                    src_vocab_file,
+                    tgt_vocab_file,
+                    batch_size,
+                    bos="<s>",
+                    eos="</s>",
+                    unk_id=0,
+                    src_max_len=None,
+                    tgt_max_len=None,
+                    num_parallel_calls=4,
+                    num_buckets=5,
+                    output_buffer_size=None,
+                    disable_shuffle=False,
+                    num_splits=1):
     def __get_word_dict(vocab_file_path, unk_id):
         return tf.contrib.lookup.index_table_from_file(
             vocabulary_file=vocab_file_path,
@@ -128,13 +205,38 @@ def get_iterator(src_file_name,
     else:
         batched_dataset = __batching_func(curwd_nxtwd_dataset)
 
+    batched_iter = batched_dataset.make_initializable_iterator()
+    return batched_iter
+
+
+def get_iterator(src_file_name,
+                 tgt_file_name,
+                 src_vocab_file,
+                 tgt_vocab_file,
+                 batch_size,
+                 bos="<s>",
+                 eos="</s>",
+                 unk_id=0,
+                 src_max_len=None,
+                 tgt_max_len=None,
+                 num_parallel_calls=4,
+                 num_buckets=5,
+                 output_buffer_size=None,
+                 disable_shuffle=False,
+                 num_splits=1):
+
+    batched_iter = create_iterator(
+        src_file_name, tgt_file_name, src_vocab_file, tgt_vocab_file,
+        batch_size, bos, eos, unk_id, src_max_len, tgt_max_len,
+        num_parallel_calls, num_buckets, output_buffer_size, disable_shuffle,
+        num_splits)
+
     src_ids = [[] for _ in range(num_splits)]
     tgt_input_ids = [[] for _ in range(num_splits)]
     tgt_output_ids = [[] for _ in range(num_splits)]
     src_seq_len = [[] for _ in range(num_splits)]
     tgt_seq_len = [[] for _ in range(num_splits)]
 
-    batched_iter = batched_dataset.make_initializable_iterator()
     for i in range(num_splits):
         (src_ids[i], tgt_input_ids[i], tgt_output_ids[i], src_seq_len[i],
          tgt_seq_len[i]) = batched_iter.get_next()
@@ -148,29 +250,217 @@ def get_iterator(src_file_name,
         target_sequence_length=tgt_seq_len)
 
 
+def minibatch_fn(src_file_name,
+                 tgt_file_name,
+                 src_vocab_file,
+                 tgt_vocab_file,
+                 batch_size,
+                 bos="<s>",
+                 eos="</s>",
+                 unk_id=0,
+                 src_max_len=None,
+                 tgt_max_len=None,
+                 num_parallel_calls=4,
+                 num_buckets=5,
+                 output_buffer_size=None,
+                 disable_shuffle=False,
+                 num_splits=1):
+    iterator = create_iterator(src_file_name, tgt_file_name, src_vocab_file,
+                               tgt_vocab_file, batch_size, bos, eos, unk_id,
+                               src_max_len, tgt_max_len, num_parallel_calls,
+                               num_buckets, output_buffer_size,
+                               disable_shuffle, num_splits)
+    iterator_string_handle = iterator.string_handle()
+
+    @function.Defun(tf.string)
+    def _fn(h):
+        remote_iterator = tf.data.Iterator.from_string_handle(
+            h, iterator.output_types, iterator.output_shapes)
+        (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len,
+         tgt_seq_len) = remote_iterator.get_next()
+        return (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len,
+                tgt_seq_len)
+
+    return _fn, [iterator_string_handle], iterator.initializer
+
+
+def build_function_buffering_resources(cpu_device,
+                                       gpu_devices,
+                                       src_file_name,
+                                       tgt_file_name,
+                                       src_vocab_file,
+                                       tgt_vocab_file,
+                                       batch_size,
+                                       bos="<s>",
+                                       eos="</s>",
+                                       unk_id=0,
+                                       src_max_len=None,
+                                       tgt_max_len=None,
+                                       num_parallel_calls=4,
+                                       num_buckets=5,
+                                       output_buffer_size=None,
+                                       disable_shuffle=False):
+    num_splits = len(gpu_devices)
+    if not output_buffer_size:
+        output_buffer_size = batch_size * 1000
+
+    remote_fn, args, initializer = minibatch_fn(
+        src_file_name, tgt_file_name, src_vocab_file, tgt_vocab_file,
+        batch_size, bos, eos, unk_id, src_max_len, tgt_max_len,
+        num_parallel_calls, num_buckets, output_buffer_size, disable_shuffle,
+        num_splits)
+
+    function_buffering_resources = []
+    for device_num, device in enumerate(gpu_devices):
+        buffer_resource_handle = prefetching_ops.function_buffering_resource(
+            f=remote_fn,
+            target_device=cpu_device,
+            string_arg=args[0],
+            buffer_size=output_buffer_size,
+            shared_name=None)
+        function_buffering_resources.append(buffer_resource_handle)
+    return function_buffering_resources, initializer
+
+
+def build_prefetch_processing(cpu_device,
+                              gpu_devices,
+                              src_file_name,
+                              tgt_file_name,
+                              src_vocab_file,
+                              tgt_vocab_file,
+                              batch_size,
+                              bos="<s>",
+                              eos="</s>",
+                              unk_id=0,
+                              src_max_len=None,
+                              tgt_max_len=None,
+                              num_parallel_calls=4,
+                              num_buckets=5,
+                              output_buffer_size=None,
+                              disable_shuffle=False):
+    """
+    NOTE: This function is ONLY used in performace testing.
+
+    Not test enough. Do not use it for training task.
+    """
+    (function_buffering_resources,
+     initializer) = build_function_buffering_resources(
+         cpu_device, gpu_devices, src_file_name, tgt_file_name, src_vocab_file,
+         tgt_vocab_file, batch_size)
+
+    num_splits = len(gpu_devices)
+    src_ids = [[] for _ in range(num_splits)]
+    tgt_input_ids = [[] for _ in range(num_splits)]
+    tgt_output_ids = [[] for _ in range(num_splits)]
+    src_seq_len = [[] for _ in range(num_splits)]
+    tgt_seq_len = [[] for _ in range(num_splits)]
+
+    for i, device in enumerate(gpu_devices):
+        with tf.device(device):
+            (src_ids[i], tgt_input_ids[i], tgt_output_ids[i], src_seq_len[i],
+             tgt_seq_len[i]) = get_input_data(function_buffering_resources[i],
+                                              batch_size)
+
+    return BatchedInput(
+        initializer=initializer,
+        source=src_ids,
+        target_input=tgt_input_ids,
+        target_output=tgt_output_ids,
+        source_sequence_length=src_seq_len,
+        target_sequence_length=tgt_seq_len)
+
+
+def get_input_data(function_buffering_resource, batch_size):
+    # there are 5 outputs in the model whose types are all tf.int32
+    (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len,
+     tgt_seq_len) = prefetching_ops.function_buffering_resource_get_next(
+         function_buffer_resource=function_buffering_resource,
+         output_types=[tf.int32] * 5)
+
+    #TODO hard code batch size for test.
+    src_ids = tf.reshape(src_ids, [batch_size, -1])
+    tgt_input_ids = tf.reshape(tgt_input_ids, [batch_size, -1])
+    tgt_output_ids = tf.reshape(tgt_output_ids, [batch_size, -1])
+    src_seq_len = tf.reshape(src_seq_len, [-1])
+    tgt_seq_len = tf.reshape(tgt_seq_len, [-1])
+    return (src_ids, tgt_input_ids, tgt_output_ids, src_seq_len, tgt_seq_len)
+
+
+def test_get_data(use_synthetic_data,
+                  src_file_name,
+                  tgt_file_name,
+                  src_vocab_size,
+                  tgt_vocab_size,
+                  seq_len,
+                  num_splits,
+                  batch_size,
+                  devices,
+                  prefetch=False):
+
+    if use_synthetic_data:
+        iterator = get_synthetic_data(seq_len, batch_size, time_major,
+                                      src_vocab_size, tgt_vocab_size, devices)
+    else:
+        if prefetch:
+            cpu_device = "/cpu:0"
+
+            iterator = build_prefetch_processing(
+                cpu_device, gpu_devices, src_file_name, tgt_file_name,
+                src_vocab_file, tgt_vocab_file, batch_size)
+        else:
+            iterator = get_iterator(
+                src_file_name,
+                tgt_file_name,
+                src_vocab_file,
+                tgt_vocab_file,
+                batch_size,
+                num_splits=num_splits)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        if not use_synthetic_data:
+            sess.run(tf.tables_initializer())
+            sess.run(iterator.initializer)
+
+        for i in range(10000):
+            try:
+                ops = (iterator.source + iterator.target_input +
+                       iterator.target_output + iterator.source_sequence_length
+                       + iterator.target_sequence_length)
+                res = sess.run(ops)
+            except tf.errors.OutOfRangeError:
+                sess.run(iterator.initializer)
+                continue
+
+
 if __name__ == "__main__":
     src_file_name = "data/train.en"
     tgt_file_name = "data/train.de"
     src_vocab_file = "data/vocab.50K.en"
     tgt_vocab_file = "data/vocab.50K.de"
 
-    batch_size = 3 * 5
-    num_splits = 3
+    seq_len = 10
+    src_vocab_size = 100
+    tgt_vocab_size = 100
+    time_major = True
 
-    iterator = get_iterator(
-        src_file_name,
-        tgt_file_name,
-        src_vocab_file,
-        tgt_vocab_file,
-        batch_size,
-        num_splits=num_splits)
+    num_splits = 2
+    batch_size = num_splits * 5
+    gpu_devices = ["/gpu:%d" % (i) for i in range(num_splits)]
 
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        sess.run(tf.tables_initializer())
-        sess.run(iterator.initializer)
+    # test_get_data(True, src_file_name, tgt_file_name, src_vocab_size,
+    #               tgt_vocab_size, seq_len, num_splits, batch_size, gpu_devices)
 
-        for i in range(5):
-            res = sess.run(iterator.source + iterator.target_input + iterator.
-                           target_output + iterator.source_sequence_length +
-                           iterator.target_sequence_length)
+    for prefetch in [True]:
+        test_get_data(
+            False,
+            src_file_name,
+            tgt_file_name,
+            src_vocab_size,
+            tgt_vocab_size,
+            seq_len,
+            num_splits,
+            batch_size,
+            gpu_devices,
+            prefetch=prefetch)
