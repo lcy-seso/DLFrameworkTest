@@ -21,7 +21,7 @@ _**NOTE: This test runs with `inter_op_parallelism_threads=0` which means Tensor
     2>&1 | tee train.log
   ```
 
-  - _Batch size per GPU card is fixed to be 360 which is the largest batch size can be used on one P100 for this test model._
+  - _Batch size per GPU card is fixed to be 360 which is the largest batch size can be used on one P100 for the test model._
 
   |GPU number|Total time to process 20 batches (s)|Processing speed (words/s)|Speedup ratio|
   |:--|:--|:--|:--|
@@ -31,6 +31,8 @@ _**NOTE: This test runs with `inter_op_parallelism_threads=0` which means Tensor
   |4|70.868|81684.778|2.27|
   |5|84.110|86029.952|2.39|
   |6|101.521|85531.174|2.38|
+  |7|113.831|88995.177|2.47|
+  |8|123.035|94099.686|2.61|
 
 ## Test on GeForce GTX TITAN
 
