@@ -1,3 +1,7 @@
+[TOC]
+
+_**NOTE: This test runs with `inter_op_parallelism_threads=0` which means TensorFlow automatically determines size of the thread pool. This setting causes problems. See more detail reason and data in [this test](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/inter_op_parallelism_threads_with_MKL.md).**_
+
 # `tf.contrib.cudnn_rnn.CudnnLSTM` for encoder and decoder
 
 - Data collected based on this commit [dd8cd72](https://github.com/lcy-seso/dl_framework/tree/dd8cd72468774604d39daefc7570e6e786eab7a5/tensorflow/data_parallelism_for_nmt)

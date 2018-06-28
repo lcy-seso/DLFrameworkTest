@@ -13,4 +13,5 @@
 - [The performance of data parallelism using all-reduce algorithms](docs/test_allreduce_algorithm.md)
 - [The performance of data parallelism using PS mode and cudnn_lstm for encoder and decoder](docs/test_cudnn_lstm.md)
 - [The performance of totally independent model replica](docs/test_independent_model_replica.md)
+- [**important**] [MKL with default setting of `inter_op_parallelism_threads`](docs/inter_op_parallelism_threads_with_MKL.md)
 - [Optimized I/O pipline: prefetch to device](docs/optimized_io_pipline.md)

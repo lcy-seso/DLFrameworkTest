@@ -1,5 +1,7 @@
 [TOC]
 
+_**NOTE: This test runs with `inter_op_parallelism_threads=0` which means TensorFlow automatically determines size of the thread pool. This setting causes problems. See more detail reason and data in [this test](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/inter_op_parallelism_threads_with_MKL.md).**_
+
 # Test totally independent model replica on synthetic data
 
 Data collected based on this commit [fb9dc73](https://github.com/lcy-seso/dl_framework/tree/fb9dc733a774610a67034eb91038ba832e4bf898/tensorflow/data_parallelism_for_nmt)
