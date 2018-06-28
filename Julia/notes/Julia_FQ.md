@@ -357,7 +357,7 @@ abstract «name» <: «supertype»
   1. used in declarations: declares the right-hand type to be an immediate supertype of the newly declared type.
   1. used in expressions as a subtype operator: return true when its left operand is a subtype of its right operand.
 
-### [Composite Types](https://docs.julialang.org/en/release-0.4/manual/types/#abstract-types)
+#### [Composite Types](https://docs.julialang.org/en/release-0.4/manual/types/#abstract-types)
 
 ---
 
