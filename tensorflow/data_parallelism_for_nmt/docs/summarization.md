@@ -2,15 +2,14 @@
 
 # Summarization
 
-Usually the following four factors are ensential to time performance:
+Usually the following factors are ensential to time performance:
 
-* Computation
-* Memory Access
-* Communication
-* _**OP scheduling**_ to hide latency
-* I/O pipline
-
-[Arithmetic_intensity](https://en.wikipedia.org/wiki/Roofline_model#Arithmetic_intensity)
+1. Computation
+2. Memory Access
+3. *Communication*
+4. *I/O pipline*
+5. *synchronization SGD is used, balance of computation workload* (may harm learning performance)
+6. _**OP scheduling**_ to hide latency
 
 ---
 
@@ -37,27 +36,14 @@ Usually the following four factors are ensential to time performance:
 
   * 2 embedding + 8 LSTM + 1 pre-softmax projection $\approx$ 270.28 MB
 
-* If `cudnn_lstm` is used, the stacked multi-layer LSTMs only has one parameter.
-
-## PS mode vs. All-reduce and dynamic_rnn vs. cudnn_lstm
+## PS mode vs. All-reduce and `dynamic_rnn` vs. `cudnn_lstm`
 
 ### Experiment results
 
 * **defalut setting of `inter_op_parallelism_threads`**
-  * Exp1:
-    * dynamic rnn
-    * PS mode
-    * all learnable parameters are on GPU
-  * Exp2:
-    * dynamic rnn
-    * all reduce
-    * all learnable parameters are on GPU
-  * Exp3:
-    * cudnn lstm
-    * PS mode
-    * all learnable parameters are on GPU
+* all learnable parameters are on GPU
 
-    |GPU cards|[Exp1](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/test_ps_mode.md#exp5)<br> word/s (speedup-ratio)|[Exp2](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/test_allreduce_algorithm.md#test-on-tesla-p100)<br> word/s (speedup-ratio)|[Exp3](https://github.com/lcy-seso/dl_framework/blob/master/tensorflow/data_parallelism_for_nmt/docs/test_cudnn_lstm.md#use-wmt-14-en-de)<br> word/s (speedup-ratio)|
+    |GPU cards|dynamic rnn + ps mode|dynamic rnn + all reduce|cudnn lstm + ps mode|
     |--|--|--|--|
     |1|35668.346|35990.222|49532.893|
     |2|61293.843 (1.72)|60470.170(1.68)|86096.435 (1.74)|
@@ -70,9 +56,18 @@ Usually the following four factors are ensential to time performance:
 
 ### Foundings
 
-## the effect of `inter_op_parallelism_threads`
+1. In the test above, all the settings cannot scale well. They are all mainly bound by the host computation threads.
+2. All-reduce according to current implementation may have the following limitations:
+    * All-reduce has an explicit synchronization point: gradients of all the learnable parameters are concatenated all together.
+    * All-reduce has extra memory access overload, it involves a pack and unpack process.
+      * before all-reduce gradients of all the learnable parameters are concatenated together and then split into several parts.
+      * After all-reduce, a reverse post-process is required to produce merged gradients.
+3. If `cudnn_lstm` is used:
+    * multiple stacked LSTMs only has one parameter (approximately 16 MB).
 
-### ideal situation
+## The effect of host thread pool
+
+### The ideal situation: no I/O and communication cost
 
 |GPU cards|dynamic_rnn|cudnn_lstm|
 |--|--|--|
@@ -85,7 +80,9 @@ Usually the following four factors are ensential to time performance:
 |7|184857.154(4.70)|279107.499(5.47)|
 |8||309930.493(6.07)|
 
-### cudnn_lstm + PS mode
+* In the ideal situation, there is no I/O and communication cost. However, `dynamic rnn` scales worse than `cudnn lstm`.
+
+### `cudnn_lstm` + PS mode
 
 * all learnable parameters are on GPU
 
@@ -100,7 +97,10 @@ Usually the following four factors are ensential to time performance:
     |7|116744.428(2.36)|227553.456(4.47)|234614.995(4.69)|
     |8|||274915.239(5.50)|
 
-### dynamic_rnn + PS mode
+* If the I/O pipline works correctly, compared to the ideal situation experiment, this test only adds the communication cost.
+* The currently speedup ratio is near the speedup ratio obtained in the *ideal situation experiment*.
+
+### `dynamic_rnn` + PS mode
 
 * all learnable parameters are on GPU
 
@@ -115,7 +115,7 @@ Usually the following four factors are ensential to time performance:
     |7|100812.133 (2.83)|146193.808(3.89)|176083.321(4.63)|
     |8|106740.810 (2.99)||188651.349(4.96)|
 
-### dynamic_rnn + all reduce
+### `dynamic_rnn` + all reduce
 
 * all learnable parameters are on GPU
 
@@ -129,3 +129,9 @@ Usually the following four factors are ensential to time performance:
     |6|85531.174(2.38)|120827.291(3.24)|136668.138(3.65)|
     |7|88995.177(2.47)|124162.210(3.33)|143680.666(3.84)|
     |8|94099.686(2.61)||151700.671(4.05)|
+
+## Problems
+
+1. Even in the idea situation, the speedup ratio is below linear. dynamic rnn scale worse than cudnn_lstm.
+    * current suspection is the speedup ratio is bound by host op scheduling.
+1. All-reduce scale worse than PS mode under current implementation.

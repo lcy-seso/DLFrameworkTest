@@ -32,5 +32,10 @@ the `@cuda` macro:
 
 ---
 * On average, the CUDAnative.jl ports perform identical to statically compiled CUDA C++.
-* Julia has recently gained support for **syntactic loop fusion**, where chained vector operations are fused into a single broadcast.
+* Julia has recently gained support for **[syntactic loop fusion](https://julialang.org/blog/2017/01/moredots)**, where chained vector operations are fused into a single broadcast.
 * Julia features a strong foreign function interface (FFI) for calling into other language environments.
+
+# [Syntactic Loop Fusion](https://julialang.org/blog/2017/01/moredots)
+
+* multiple vectorized operations can be “fused” into a single loop, without allocating any extraneous temporary arrays.
+  * *to get good performance both of these snippets should be executed inside some function, not in global scope* (??).
