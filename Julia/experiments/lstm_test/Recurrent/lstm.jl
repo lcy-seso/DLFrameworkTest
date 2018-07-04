@@ -1,0 +1,69 @@
+#!/usr/bin/env julia
+
+type LSTMCell  # for test, not optimized
+  # input gate parameters
+  wix::Param
+  wih::Param
+  bi::Param
+
+  # forget gate parameters
+  wfx::Param
+  wfh::Param
+  bf::Param
+
+  # parameters for candidate input computation
+  wcx::Param
+  wch::Param
+  bc::Param
+
+  # output gate parameters
+  wox::Param
+  woh::Param
+  bo::Param
+
+  function LSTMCell(input_dim::Integer, hidden_dim::Integer, std::Real=1e-3)
+    wix = randParam(input_dim, hidden_dim, std)
+    wih = randParam(hidden_dim, hidden_dim, std)
+    bi = randParam(hidden_dim, 1, std)
+
+    wfx = randParam(input_dim, hidden_dim, std)
+    wfh = randParam(hidden_dim, hidden_dim, std)
+    bf = randParam(hidden_dim, 1, std)
+
+    wcx = randParam(input_dim, hidden_dim, std)
+    wch = randParam(hidden_dim, hidden_dim, std)
+    bc = randParam(hidden_dim, 1, std)
+
+    wox = randParam(input_dim, hidden_dim, std)
+    woh = randParam(hidden_dim, hidden_dim, std)
+    bo = randParam(hidden_dim, 1, std)
+
+    new(wix, wih, bi, wfx, wfh, bf, wcx, wch, bc, wox, woh, bo)
+  end
+end
+
+function LSTM_forward(inputs::Array, LSTMCell::LSTMCell,
+                      input_dim::Integer, hidden_dim::Integer,
+                      seq_len::Integer, kwargs...)
+
+  batch_size = size(inputs, 1)
+
+  hidden_states::Matrix{AbstractFloat} = zeros(batch_size, hidden_dim)
+  cell_states::Matrix{AbstractFloat} = zeros(batch_size, hidden_dim)
+
+  @show sample_num = convert(Integer, batch_size / seq_len)
+  if isempty(kwargs)
+    hidden_init = zeros(sample_num, hidden_dim)
+    cell_init = zeros(sample_num, hidden_dim)
+  else
+    @assert size(kwargs) == 2
+    hidden_init, cell_init = kwargs
+  end
+
+  start = 1
+  for i = 1: seq_len
+    input_t = inputs[start : start + sample_num - 1, :]
+    start += sample_num
+  end
+end
+
