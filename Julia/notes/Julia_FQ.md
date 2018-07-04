@@ -295,6 +295,7 @@ Julia represents its own code as a data structure of the language itself.
 ---
 
 ### Type System
+
 * _**Generic types can be parameterized, and the hierarchical relationships between types are explicitly declared, rather than implied by compatible structure**_.
 * _**Concrete types may not subtype each other**_: all concrete types are final, so no implementation is a subtype of any other.
   * all concrete types are final and may **only** have abstract types as their supertypes.
@@ -369,11 +370,3 @@ abstract «name» <: «supertype»
 1. Is the support for serilization well enough？
 1. What is the recommanded program paradigm? a functional language? OOP?
 1. How JIT in Julia benefit deep learning framework?
-
----
-
-## Let's look at some code snippets
-
-```julia
-evalcb = () -> @show loss(Xs[5], Ys[5])
-```
