@@ -1,0 +1,1575 @@
+	.text
+Filename: lstm.jl
+	pushq	%rbp
+	movq	%rsp, %rbp
+	pushq	%r15
+	pushq	%r14
+	pushq	%r13
+	pushq	%r12
+	pushq	%rbx
+	subq	$1752, %rsp             # imm = 0x6D8
+	movq	%r8, -232(%rbp)
+	movq	%rcx, %r14
+	movq	%r14, -72(%rbp)
+	movq	%rsi, -104(%rbp)
+	movq	%rdi, %r15
+	movabsq	$jl_alloc_array_2d, %r12
+	movq	%fs:0, %rbx
+	addq	$-10888, %rbx           # imm = 0xD578
+	leaq	-1432(%rbp), %rdi
+	vxorps	%ymm0, %ymm0, %ymm0
+	vmovups	%ymm0, -456(%rbp)
+	vmovups	%ymm0, -488(%rbp)
+	vmovups	%ymm0, -520(%rbp)
+	vmovups	%ymm0, -552(%rbp)
+	movabsq	$139974771423536, %rax  # imm = 0x7F4E6A873930
+	xorl	%esi, %esi
+	movl	$872, %edx              # imm = 0x368
+	vzeroupper
+	callq	*%rax
+	movq	$252, -1448(%rbp)
+	movq	(%rbx), %rax
+	movq	%rax, -1440(%rbp)
+	leaq	-1448(%rbp), %rax
+	movq	%rbx, -56(%rbp)
+	movq	%rax, (%rbx)
+	movq	$0, -560(%rbp)
+	movq	%r15, -192(%rbp)
+	movq	24(%r15), %rbx
+Source line: 50
+	movq	%rbx, -136(%rbp)
+	leaq	-176077088(%r12), %rdi
+	leaq	-656(%r12), %rax
+	xorl	%esi, %esi
+	movq	%rax, -280(%rbp)
+	callq	*%rax
+	movq	%rax, -64(%rbp)
+	movq	%rax, -1432(%rbp)
+Source line: 52
+	leaq	-170222720(%r12), %r15
+	movq	%r15, %rdi
+	movq	%rbx, %rsi
+	movq	%r14, %rdx
+	callq	*%r12
+	movq	%rax, -1424(%rbp)
+	movabsq	$"fill!", %rcx
+	vxorps	%xmm0, %xmm0, %xmm0
+	movq	%rax, %rdi
+	callq	*%rcx
+	movq	%rax, %rbx
+	movq	%rbx, -1416(%rbp)
+Source line: 368
+	movq	24(%rbx), %rsi
+	movq	32(%rbx), %rdx
+	leaq	-114825536(%r12), %r14
+	movq	%r14, %rdi
+	callq	*%r12
+	movq	%rax, -1408(%rbp)
+Source line: 52
+	movabsq	$"copy!", %rcx
+	movq	%rax, %rdi
+	movq	%rbx, %rsi
+	callq	*%rcx
+	movq	%rax, -144(%rbp)
+	movq	%rax, -1400(%rbp)
+	movq	%r15, -120(%rbp)
+Source line: 53
+	movq	%r15, %rdi
+	movq	-136(%rbp), %r13
+	movq	%r13, %rsi
+	movq	-72(%rbp), %rdx
+	callq	*%r12
+	movq	%rax, -1392(%rbp)
+	vxorps	%xmm0, %xmm0, %xmm0
+	movq	%rax, %rdi
+Source line: 52
+	movabsq	$"fill!", %rax
+Source line: 53
+	callq	*%rax
+	movq	%rax, %rbx
+	movq	%rbx, -1384(%rbp)
+Source line: 368
+	movq	24(%rbx), %rsi
+	movq	32(%rbx), %rdx
+	movq	%r14, -184(%rbp)
+	movq	%r14, %rdi
+	callq	*%r12
+	movq	%rax, -1376(%rbp)
+Source line: 53
+	movq	%rax, %rdi
+	movq	%rbx, %rsi
+	movq	-232(%rbp), %r15
+Source line: 52
+	movabsq	$"copy!", %rax
+Source line: 53
+	callq	*%rax
+	movq	%rax, -88(%rbp)
+	movq	%rax, -1368(%rbp)
+Source line: 55
+	vxorps	%xmm1, %xmm1, %xmm1
+	vcvtsi2sdq	%r13, %xmm1, %xmm0
+	vcvtsi2sdq	%r15, %xmm1, %xmm1
+	vdivsd	%xmm1, %xmm0, %xmm0
+	leaq	-176078912(%r12), %rdi
+	movabsq	$convert, %rax
+	callq	*%rax
+	movq	%rax, %r14
+Source line: 56
+	movq	-64(%rbp), %rax
+	cmpq	$0, 24(%rax)
+	jg	L6766
+	movq	-120(%rbp), %r13
+Source line: 57
+	movq	%r13, %rdi
+	movq	%r14, %rsi
+	movq	-72(%rbp), %rbx
+	movq	%rbx, %rdx
+	callq	*%r12
+	movq	%rax, -1360(%rbp)
+	vxorpd	%xmm0, %xmm0, %xmm0
+	movq	%rax, %rdi
+Source line: 52
+	movabsq	$"fill!", %rax
+Source line: 57
+	callq	*%rax
+	movq	%rax, -1352(%rbp)
+	movq	%rax, -1344(%rbp)
+Source line: 58
+	movq	%r13, %rdi
+	movq	%r14, -224(%rbp)
+	movq	%r14, %rsi
+	movq	%rbx, %rdx
+	callq	*%r12
+	movq	%rax, -1336(%rbp)
+	vxorpd	%xmm0, %xmm0, %xmm0
+	movq	%rax, %rdi
+Source line: 52
+	movabsq	$"fill!", %rax
+Source line: 58
+	callq	*%rax
+	movq	%rax, -1328(%rbp)
+	movq	%rax, -1320(%rbp)
+Source line: 65
+	testq	%r15, %r15
+	jle	L6494
+Source line: 52
+	movq	-144(%rbp), %rax
+	movq	24(%rax), %rcx
+Source line: 53
+	movq	-88(%rbp), %rax
+	movq	24(%rax), %rdx
+	xorl	%esi, %esi
+	movq	-136(%rbp), %rax
+Source line: 389
+	testq	%rax, %rax
+	cmovsq	%rsi, %rax
+	movq	%rax, -136(%rbp)
+Source line: 132
+	testq	%rdx, %rdx
+	cmovsq	%rsi, %rdx
+	movq	%rdx, -240(%rbp)
+Source line: 389
+	testq	%rcx, %rcx
+	cmovsq	%rsi, %rcx
+	movq	%rcx, -264(%rbp)
+Source line: 65
+	movq	-224(%rbp), %rax
+	negq	%rax
+	movq	%rax, -256(%rbp)
+Source line: 64
+	movq	-192(%rbp), %rax
+	movq	32(%rax), %rax
+Source line: 495
+	movq	%rax, -272(%rbp)
+	xorl	%edx, %edx
+	xorl	%eax, %eax
+Source line: 65
+	movq	%rax, -176(%rbp)
+	nopw	(%rax,%rax)
+Source line: 66
+L784:
+	leaq	1(%rdx), %r14
+Source line: 764
+	movq	-224(%rbp), %rax
+	leaq	(%rax,%rdx), %r15
+	movq	-272(%rbp), %rax
+	testq	%rax, %rax
+	movl	$0, %ebx
+	cmovnsq	%rax, %rbx
+Source line: 883
+	cmpq	%r15, %r14
+	movq	%r15, -296(%rbp)
+	movq	%rdx, -64(%rbp)
+	cmovgq	%rdx, %r15
+Source line: 494
+	movq	%r14, -1616(%rbp)
+	movq	%r15, -1608(%rbp)
+	movq	%rbx, -1600(%rbp)
+Source line: 362
+	cmpq	%r14, %r15
+	setl	%sil
+	testq	%r14, %r14
+	setg	%dil
+	movq	-136(%rbp), %rcx
+	cmpq	%rcx, %r14
+	setle	%al
+	testq	%r15, %r15
+	setg	%dl
+	cmpq	%rcx, %r15
+	setle	%cl
+	movb	%dil, -41(%rbp)
+	andb	%dil, %al
+	andb	%cl, %al
+	movb	%dl, -42(%rbp)
+	andb	%dl, %al
+	movb	%sil, -43(%rbp)
+	orb	%sil, %al
+	je	L6611
+	movq	-176(%rbp), %r12
+Source line: 66
+	addq	$1, %r12
+	movq	%r12, -176(%rbp)
+	movabsq	$jl_alloc_array_2d, %r12
+Source line: 495
+	leaq	-174827752(%r12), %rax
+	movq	%rax, -168(%rbp)
+	movq	%rax, -552(%rbp)
+	movq	-192(%rbp), %rax
+	movq	%rax, -544(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rdi
+	movabsq	$jl_gc_pool_alloc, %r13
+	callq	*%r13
+	leaq	-175614400(%r12), %rcx
+	movq	%rcx, -160(%rbp)
+	movq	%rcx, -8(%rax)
+	movq	%r14, -248(%rbp)
+	movq	%r14, (%rax)
+	movq	%r15, -216(%rbp)
+	movq	%r15, 8(%rax)
+	movq	%rax, -536(%rbp)
+	movl	$1432, %esi             # imm = 0x598
+	movl	$16, %edx
+	movq	-56(%rbp), %rdi
+	callq	*%r13
+	movq	%r12, %r13
+	leaq	-979434336(%r13), %r14
+	movq	%r14, -8(%rax)
+	movq	%rbx, (%rax)
+	movq	%rax, -528(%rbp)
+	leaq	-169886104(%r13), %rbx
+	movl	$4, %edx
+	movq	%rbx, %rdi
+	leaq	-552(%rbp), %rsi
+	movabsq	$_unsafe_getindex, %rax
+	callq	*%rax
+	movq	%rax, -72(%rbp)
+	movq	%rax, -1312(%rbp)
+	movq	-176(%rbp), %rax
+Source line: 67
+	cmpq	$2, %rax
+	movq	%r14, -152(%rbp)
+	jge	L1216
+	movq	-1344(%rbp), %r12
+	movq	%r12, -1288(%rbp)
+	movq	%r12, -1280(%rbp)
+Source line: 69
+	movq	-1320(%rbp), %rax
+	movq	%rax, -1256(%rbp)
+	jmp	L1798
+	nopw	(%rax,%rax)
+L1216:
+	movq	%rbx, -96(%rbp)
+	movq	-256(%rbp), %rax
+	movq	-64(%rbp), %rcx
+Source line: 64
+	leaq	(%rax,%rcx), %r12
+	leaq	1(%rax,%rcx), %r15
+	movq	-144(%rbp), %rdi
+	movq	%rdi, -1304(%rbp)
+	movq	32(%rdi), %rax
+Source line: 764
+	testq	%rax, %rax
+	movl	$0, %r13d
+	cmovnsq	%rax, %r13
+Source line: 883
+	cmpq	%rcx, %r15
+	cmovleq	%rcx, %r12
+Source line: 494
+	movq	%r15, -1640(%rbp)
+	movq	%r12, -1632(%rbp)
+	movq	%r13, -1624(%rbp)
+Source line: 64
+	movq	%rdi, -1296(%rbp)
+Source line: 362
+	cmpq	%r15, %r12
+	setl	%dl
+	testq	%r15, %r15
+	setg	%r14b
+	movq	-264(%rbp), %rcx
+	cmpq	%rcx, %r15
+	setle	%al
+	testq	%r12, %r12
+	setg	%bl
+	cmpq	%rcx, %r12
+	setle	%cl
+	andb	%r14b, %al
+	andb	%cl, %al
+	movb	%bl, -80(%rbp)
+	andb	%bl, %al
+	movb	%dl, -128(%rbp)
+	orb	%dl, %al
+	je	L6714
+Source line: 495
+	movq	%rdi, -544(%rbp)
+	movq	-168(%rbp), %rax
+	movq	%rax, -552(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rbx
+	movq	%rbx, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 495
+	callq	*%rax
+	movq	-160(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r15, (%rax)
+	movq	%r12, 8(%rax)
+	movq	%rax, -536(%rbp)
+	movl	$1432, %esi             # imm = 0x598
+	movl	$16, %edx
+	movq	%rbx, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 495
+	callq	*%rax
+	movq	-152(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r13, (%rax)
+	movq	%rax, -528(%rbp)
+	movl	$4, %edx
+	movq	-96(%rbp), %rdi
+	leaq	-552(%rbp), %r13
+	movq	%r13, %rsi
+	movabsq	$_unsafe_getindex, %r13
+	callq	*%r13
+	movq	%rax, -1288(%rbp)
+	movq	%rax, -64(%rbp)
+Source line: 67
+	movq	%rax, -1280(%rbp)
+	movq	-88(%rbp), %rdi
+Source line: 64
+	movq	%rdi, -1272(%rbp)
+	movq	32(%rdi), %rax
+Source line: 764
+	testq	%rax, %rax
+	movl	$0, %ebx
+	cmovnsq	%rax, %rbx
+Source line: 494
+	movq	%r15, -1664(%rbp)
+	movq	%r12, -1656(%rbp)
+	movq	%rbx, -1648(%rbp)
+Source line: 64
+	movq	%rdi, -1264(%rbp)
+	movq	-240(%rbp), %rcx
+Source line: 362
+	cmpq	%rcx, %r15
+	setle	%al
+	cmpq	%rcx, %r12
+	setle	%cl
+	andb	%al, %r14b
+	andb	%cl, %r14b
+	andb	-80(%rbp), %r14b
+	orb	-128(%rbp), %r14b
+	je	L6740
+Source line: 495
+	movq	%rdi, -544(%rbp)
+	movq	-168(%rbp), %rax
+	movq	%rax, -552(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %r14
+	movq	%r14, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %r13
+Source line: 495
+	callq	*%r13
+	movq	-160(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r15, (%rax)
+	movq	%r12, 8(%rax)
+	movq	%rax, -536(%rbp)
+	movl	$1432, %esi             # imm = 0x598
+	movl	$16, %edx
+	movq	%r14, %rdi
+	callq	*%r13
+	movq	-152(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%rbx, (%rax)
+	movq	%rax, -528(%rbp)
+	movl	$4, %edx
+	movq	-96(%rbp), %rdi
+	leaq	-552(%rbp), %rsi
+Source line: 495
+	movabsq	$_unsafe_getindex, %rax
+Source line: 495
+	callq	*%rax
+	movq	%rax, -1256(%rbp)
+	movabsq	$jl_alloc_array_2d, %r12
+	movq	%r12, %rcx
+	movq	-64(%rbp), %r12
+	movq	%rcx, %r13
+L1798:
+	movq	%rax, -208(%rbp)
+Source line: 69
+	movq	%rax, -1248(%rbp)
+Source line: 73
+	movq	-104(%rbp), %rax
+	movq	(%rax), %rax
+	movq	%rax, -1240(%rbp)
+	movq	16(%rax), %rbx
+	movq	%rbx, -1232(%rbp)
+	movq	-72(%rbp), %r15
+Source line: 146
+	movq	24(%r15), %rsi
+Source line: 146
+	movq	32(%rbx), %rdx
+	movq	-184(%rbp), %r14
+	movq	%r14, %rdi
+	movq	%rsi, -96(%rbp)
+	callq	*%r13
+	movq	%rax, -1224(%rbp)
+Source line: 73
+	movl	$78, %esi
+	movl	$78, %edx
+	movq	%rax, %rdi
+	movq	%r15, %rcx
+	movq	%rbx, %r8
+	movabsq	$"generic_matmatmul!", %rax
+	callq	*%rax
+	movq	%rax, -1216(%rbp)
+	movq	%r12, -1208(%rbp)
+	movq	-8(%r12), %rdx
+	andq	$-16, %rdx
+	cmpq	%r14, %rdx
+	movq	-120(%rbp), %rcx
+	movq	%r12, -64(%rbp)
+	movq	%rax, -80(%rbp)
+	je	L2048
+	movq	%r12, -624(%rbp)
+	cmpq	%rcx, %rdx
+	leaq	-552(%rbp), %rcx
+	je	L2064
+	movq	%r12, -544(%rbp)
+	movq	-104(%rbp), %rbx
+	movq	8(%rbx), %rax
+	movq	%rax, -616(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r13), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %esi
+	movq	%rcx, %rdi
+Source line: 82
+	movabsq	$jl_apply_generic, %rax
+Source line: 73
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -608(%rbp)
+	movq	%r13, %r14
+	jmp	L2158
+	nopl	(%rax)
+L2048:
+	leaq	-967612096(%r13), %rdi
+	leaq	-552(%rbp), %rcx
+	jmp	L2071
+L2064:
+	leaq	-976950720(%r13), %rdi
+L2071:
+	movq	%rdi, -1200(%rbp)
+	movq	%r12, -544(%rbp)
+	movq	-104(%rbp), %rbx
+	movq	8(%rbx), %rax
+	movq	%rax, -1192(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r13), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %edx
+	movq	%rcx, %rsi
+	movabsq	$jl_invoke, %rax
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -1184(%rbp)
+	movq	%r13, %r14
+L2158:
+	movq	%r15, -1176(%rbp)
+	movq	%r15, -1168(%rbp)
+	movq	16(%rbx), %rax
+	movq	%rax, -1160(%rbp)
+	movq	16(%rax), %r13
+	movq	%r13, -1152(%rbp)
+	movq	-80(%rbp), %rax
+Source line: 64
+	movq	24(%rax), %rbx
+	movq	32(%rax), %r12
+Source line: 53
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 53
+	callq	*%rax
+	leaq	-954654912(%r14), %rcx
+	movq	%rcx, -128(%rbp)
+	movq	%rcx, -8(%rax)
+	movq	%rax, -1144(%rbp)
+	movq	%r15, (%rax)
+	movq	%r13, -112(%rbp)
+	movq	%r13, 8(%rax)
+	leaq	-1792(%rbp), %r13
+	movq	%r13, %rdi
+	movq	%rax, %rsi
+	movabsq	$map, %rax
+	callq	*%rax
+	testq	%rbx, %rbx
+	movl	$0, %eax
+	cmovsq	%rax, %rbx
+	movq	%rbx, -368(%rbp)
+	testq	%r12, %r12
+	cmovsq	%rax, %r12
+	movq	%r12, -376(%rbp)
+	leaq	-368(%rbp), %rdi
+Source line: 63
+	movq	%r13, %rsi
+	movabsq	$_bcs1, %rax
+	movq	%rax, %rbx
+	callq	*%rbx
+	movq	%rax, -360(%rbp)
+	leaq	-376(%rbp), %rdi
+Source line: 63
+	leaq	-1784(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, -352(%rbp)
+	leaq	-360(%rbp), %rdi
+Source line: 63
+	leaq	-1776(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %r13
+	leaq	-352(%rbp), %rdi
+Source line: 63
+	leaq	-1768(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %r12
+Source line: 314
+	movq	$1, -1576(%rbp)
+	movq	$1, -1568(%rbp)
+	movq	%r13, -1560(%rbp)
+	movq	%r12, -1552(%rbp)
+	leaq	-1576(%rbp), %rdi
+Source line: 318
+	movabsq	$isempty, %rax
+	callq	*%rax
+	testb	$1, %al
+	jne	L2704
+Source line: 321
+	leaq	-176054168(%r14), %rax
+	movq	%rax, -552(%rbp)
+	leaq	-116013136(%r14), %rax
+	movq	%rax, -544(%rbp)
+	leaq	-176080352(%r14), %rax
+	movq	%rax, -536(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rbx
+	movq	%rbx, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-169623616(%r14), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r13, (%rax)
+	movq	%r12, 8(%rax)
+	movq	%rax, -528(%rbp)
+	movl	$1480, %esi             # imm = 0x5C8
+	movl	$48, %edx
+	movq	%rbx, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-111889344(%r14), %rcx
+	movq	%rcx, -8(%rax)
+	vmovupd	-1576(%rbp), %ymm0
+	vmovupd	%ymm0, (%rax)
+	movq	%rax, -520(%rbp)
+	movq	-80(%rbp), %rax
+	movq	%rax, -512(%rbp)
+	movq	%r15, -504(%rbp)
+	movq	-112(%rbp), %rax
+	movq	%rax, -496(%rbp)
+	leaq	-983997248(%r14), %rdi
+	movl	$8, %edx
+	leaq	-552(%rbp), %r12
+	movq	%r12, %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 321
+	vzeroupper
+	callq	*%rax
+	movq	%r14, %r15
+	jmp	L2730
+	nopl	(%rax)
+Source line: 319
+L2704:
+	leaq	-171627712(%r14), %rdi
+	movq	%r13, %rsi
+	movq	%r12, %rdx
+	callq	*%r14
+	movq	%r14, %r15
+	leaq	-552(%rbp), %r12
+L2730:
+	movq	%rax, -1136(%rbp)
+	movq	%rax, -80(%rbp)
+Source line: 73
+	movq	%rax, -1128(%rbp)
+	movq	-104(%rbp), %r13
+Source line: 76
+	movq	24(%r13), %rax
+	movq	%rax, -1120(%rbp)
+	movq	16(%rax), %rbx
+	movq	%rbx, -1112(%rbp)
+Source line: 146
+	movq	32(%rbx), %rdx
+	movq	-184(%rbp), %r14
+	movq	%r14, %rdi
+	movq	-96(%rbp), %rsi
+	callq	*%r15
+	movq	%rax, -1104(%rbp)
+Source line: 76
+	movl	$78, %esi
+	movl	$78, %edx
+	movq	%rax, %rdi
+	movq	-72(%rbp), %rcx
+	movq	%rbx, %r8
+Source line: 73
+	movabsq	$"generic_matmatmul!", %rax
+Source line: 76
+	callq	*%rax
+	movq	%rax, %rbx
+	movq	%rbx, -1096(%rbp)
+	movq	-64(%rbp), %rcx
+	movq	%rcx, -1088(%rbp)
+	movq	-8(%rcx), %rax
+	andq	$-16, %rax
+	cmpq	%r14, %rax
+	je	L2960
+	movq	%rcx, -648(%rbp)
+	cmpq	-120(%rbp), %rax
+	movq	-56(%rbp), %r14
+	je	L2976
+	movq	%rcx, -544(%rbp)
+	movq	32(%r13), %rax
+	movq	%rax, -640(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r15), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %esi
+	movq	%r12, %rdi
+Source line: 82
+	movabsq	$jl_apply_generic, %rax
+Source line: 76
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -632(%rbp)
+	jmp	L3063
+L2960:
+	leaq	-967612096(%r15), %rdi
+	movq	-56(%rbp), %r14
+	jmp	L2983
+	nopl	(%rax)
+L2976:
+	leaq	-976950720(%r15), %rdi
+L2983:
+	movq	%rdi, -1080(%rbp)
+	movq	%rcx, -544(%rbp)
+	movq	32(%r13), %rax
+	movq	%rax, -1072(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r15), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %edx
+	movq	%r12, %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 76
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -1064(%rbp)
+L3063:
+	movq	%r15, -1056(%rbp)
+	movq	%r15, -1048(%rbp)
+	movq	40(%r13), %rax
+	movq	%rax, -1040(%rbp)
+	movq	16(%rax), %r13
+	movq	%r13, -1032(%rbp)
+	movq	%rbx, %rax
+Source line: 64
+	movq	24(%rax), %rbx
+	movq	%rax, -200(%rbp)
+	movq	32(%rax), %r12
+Source line: 53
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r14, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 53
+	callq	*%rax
+	movq	-128(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%rax, -1024(%rbp)
+	movq	%r15, (%rax)
+	movq	%r13, -112(%rbp)
+	movq	%r13, 8(%rax)
+	leaq	-1760(%rbp), %r13
+	movq	%r13, %rdi
+	movq	%rax, %rsi
+Source line: 53
+	movabsq	$map, %rax
+Source line: 53
+	callq	*%rax
+	testq	%rbx, %rbx
+	movl	$0, %eax
+	cmovsq	%rax, %rbx
+	movq	%rbx, -384(%rbp)
+	testq	%r12, %r12
+	cmovsq	%rax, %r12
+	movq	%r12, -392(%rbp)
+	leaq	-384(%rbp), %rdi
+Source line: 63
+	movq	%r13, %rsi
+Source line: 63
+	movabsq	$_bcs1, %rax
+	movq	%rax, %rbx
+Source line: 63
+	callq	*%rbx
+	movq	%rax, -344(%rbp)
+	leaq	-392(%rbp), %rdi
+Source line: 63
+	leaq	-1752(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, -336(%rbp)
+	leaq	-344(%rbp), %rdi
+Source line: 63
+	leaq	-1744(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %r12
+	leaq	-336(%rbp), %rdi
+Source line: 63
+	leaq	-1736(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %rbx
+Source line: 314
+	movq	$1, -1544(%rbp)
+	movq	$1, -1536(%rbp)
+	movq	%r12, -1528(%rbp)
+	movq	%rbx, -1520(%rbp)
+	leaq	-1544(%rbp), %rdi
+Source line: 318
+	movabsq	$isempty, %rax
+Source line: 318
+	callq	*%rax
+	testb	$1, %al
+	movq	%r14, %r13
+	jne	L3632
+	movabsq	$jl_alloc_array_2d, %r14
+Source line: 321
+	leaq	-176054168(%r14), %rax
+	movq	%rax, -552(%rbp)
+	leaq	-116013128(%r14), %rax
+	movq	%rax, -544(%rbp)
+	leaq	-176080352(%r14), %rax
+	movq	%rax, -536(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-169623616(%r14), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r12, (%rax)
+	movq	%r14, %r12
+	movq	%rbx, 8(%rax)
+	movq	%rax, -528(%rbp)
+	movl	$1480, %esi             # imm = 0x5C8
+	movl	$48, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-111889344(%r12), %rcx
+	movq	%rcx, -8(%rax)
+	vmovupd	-1544(%rbp), %ymm0
+	vmovupd	%ymm0, (%rax)
+	movq	%rax, -520(%rbp)
+	movq	-200(%rbp), %rax
+	movq	%rax, -512(%rbp)
+	movq	%r15, -504(%rbp)
+	movq	-112(%rbp), %rax
+	movq	%rax, -496(%rbp)
+	leaq	-983997248(%r12), %rdi
+	movl	$8, %edx
+	leaq	-552(%rbp), %r14
+	movq	%r14, %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 321
+	vzeroupper
+	callq	*%rax
+	jmp	L3668
+	nopw	%cs:(%rax,%rax)
+L3632:
+	movabsq	$jl_alloc_array_2d, %rax
+Source line: 319
+	leaq	-171627712(%rax), %rdi
+	movq	%r12, %rsi
+	movq	%rax, %r12
+	movq	%rbx, %rdx
+	callq	*%r12
+	leaq	-552(%rbp), %r14
+L3668:
+	movq	%rax, -1016(%rbp)
+	movq	%rax, -112(%rbp)
+Source line: 76
+	movq	%rax, -1008(%rbp)
+	movq	-104(%rbp), %r15
+Source line: 80
+	movq	48(%r15), %rax
+	movq	%rax, -1000(%rbp)
+	movq	16(%rax), %rbx
+	movq	%rbx, -992(%rbp)
+Source line: 146
+	movq	32(%rbx), %rdx
+	movq	-184(%rbp), %r13
+	movq	%r13, %rdi
+	movq	-96(%rbp), %rsi
+	callq	*%r12
+	movq	%rax, -984(%rbp)
+Source line: 80
+	movl	$78, %esi
+	movl	$78, %edx
+	movq	%rax, %rdi
+	movq	-72(%rbp), %rcx
+	movq	%rbx, %r8
+Source line: 73
+	movabsq	$"generic_matmatmul!", %rax
+Source line: 80
+	callq	*%rax
+	movq	%rax, %rbx
+	movq	%rbx, -976(%rbp)
+	movq	-64(%rbp), %rcx
+	movq	%rcx, -968(%rbp)
+	movq	-8(%rcx), %rax
+	andq	$-16, %rax
+	cmpq	%r13, %rax
+	je	L3904
+	movq	%rcx, -672(%rbp)
+	cmpq	-120(%rbp), %rax
+	je	L3920
+	movq	%rcx, -544(%rbp)
+	movq	56(%r15), %rax
+	movq	%rax, -664(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r12), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %esi
+	movq	%r14, %rdi
+Source line: 82
+	movabsq	$jl_apply_generic, %rax
+Source line: 80
+	callq	*%rax
+	movq	%rax, %r12
+	movq	%r12, -656(%rbp)
+	jmp	L4009
+	nopw	(%rax,%rax)
+L3904:
+	leaq	-967612096(%r12), %rdi
+	jmp	L3928
+	nopw	(%rax,%rax)
+L3920:
+	leaq	-976950720(%r12), %rdi
+L3928:
+	movq	%rdi, -960(%rbp)
+	movq	%rcx, -544(%rbp)
+	movq	56(%r15), %rax
+	movq	%rax, -952(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r12), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %edx
+	movq	%r14, %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 80
+	callq	*%rax
+	movq	%rax, %r12
+	movq	%r12, -944(%rbp)
+L4009:
+	movq	%r12, -936(%rbp)
+	movq	%r12, -928(%rbp)
+	movq	64(%r15), %rax
+	movq	%rax, -920(%rbp)
+	movq	16(%rax), %r15
+	movq	%r15, -912(%rbp)
+	movq	%rbx, %rax
+Source line: 64
+	movq	24(%rax), %rbx
+	movq	%rax, -288(%rbp)
+	movq	32(%rax), %r14
+Source line: 53
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %r13
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 53
+	callq	*%rax
+	movq	-128(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%rax, -904(%rbp)
+	movq	%r12, (%rax)
+	movq	%r15, -200(%rbp)
+	movq	%r15, 8(%rax)
+	leaq	-1728(%rbp), %r15
+	movq	%r15, %rdi
+	movq	%rax, %rsi
+Source line: 53
+	movabsq	$map, %rax
+Source line: 53
+	callq	*%rax
+	testq	%rbx, %rbx
+	movl	$0, %eax
+	cmovsq	%rax, %rbx
+	movq	%rbx, -400(%rbp)
+	testq	%r14, %r14
+	cmovsq	%rax, %r14
+	movq	%r14, -408(%rbp)
+	leaq	-400(%rbp), %rdi
+Source line: 63
+	movq	%r15, %rsi
+Source line: 63
+	movabsq	$_bcs1, %rax
+	movq	%rax, %rbx
+Source line: 63
+	callq	*%rbx
+	movq	%rax, -328(%rbp)
+	leaq	-408(%rbp), %rdi
+Source line: 63
+	leaq	-1720(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, -320(%rbp)
+	leaq	-328(%rbp), %rdi
+Source line: 63
+	leaq	-1712(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %r14
+	leaq	-320(%rbp), %rdi
+Source line: 63
+	leaq	-1704(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %rbx
+Source line: 314
+	movq	$1, -1512(%rbp)
+	movq	$1, -1504(%rbp)
+	movq	%r14, -1496(%rbp)
+	movq	%rbx, -1488(%rbp)
+	leaq	-1512(%rbp), %rdi
+Source line: 318
+	movabsq	$isempty, %rax
+Source line: 318
+	callq	*%rax
+	testb	$1, %al
+	jne	L4608
+	movabsq	$jl_alloc_array_2d, %rax
+	movq	%rax, %rcx
+Source line: 321
+	leaq	-176054168(%rcx), %rax
+	movq	%rax, -552(%rbp)
+	leaq	-176064432(%rcx), %rax
+	movq	%rax, -544(%rbp)
+	leaq	-176080352(%rcx), %rax
+	movq	%rax, -536(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+	movq	%r13, %r15
+	movq	%rax, %r13
+Source line: 321
+	callq	*%r13
+	movq	%r13, %r8
+	movabsq	$jl_alloc_array_2d, %rcx
+	leaq	-169623616(%rcx), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r14, (%rax)
+	movq	%rbx, 8(%rax)
+	movq	%rax, -528(%rbp)
+	movl	$1480, %esi             # imm = 0x5C8
+	movl	$48, %edx
+	movq	%r15, %rdi
+	movq	%r15, %r13
+	callq	*%r8
+	movabsq	$jl_alloc_array_2d, %rdx
+	leaq	-111889344(%rdx), %rcx
+	movq	%rcx, -8(%rax)
+	vmovupd	-1512(%rbp), %ymm0
+	vmovupd	%ymm0, (%rax)
+	movq	%rax, -520(%rbp)
+	movq	-288(%rbp), %rax
+	movq	%rax, -512(%rbp)
+	movq	%r12, -504(%rbp)
+	movq	%rdx, %r15
+	movq	-200(%rbp), %rax
+	movq	%rax, -496(%rbp)
+	leaq	-983997248(%r15), %rdi
+	movl	$8, %edx
+	leaq	-552(%rbp), %r14
+	movq	%r14, %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 321
+	vzeroupper
+	callq	*%rax
+	jmp	L4641
+	nopw	%cs:(%rax,%rax)
+L4608:
+	movabsq	$jl_alloc_array_2d, %r15
+Source line: 319
+	leaq	-171627712(%r15), %rdi
+	movq	%r14, %rsi
+	movq	%rbx, %rdx
+	callq	*%r15
+	leaq	-552(%rbp), %r14
+L4641:
+	movq	%rax, -896(%rbp)
+Source line: 80
+	movq	%rax, -888(%rbp)
+Source line: 82
+	movq	-80(%rbp), %rcx
+	movq	%rcx, -488(%rbp)
+	movq	%rax, -480(%rbp)
+	movq	-112(%rbp), %rax
+	movq	%rax, -472(%rbp)
+	movq	-208(%rbp), %rax
+	movq	%rax, -464(%rbp)
+	leaq	-172051456(%r15), %rax
+	movq	%rax, -504(%rbp)
+	leaq	-116013120(%r15), %rax
+	movq	%rax, -496(%rbp)
+	movl	$6, %esi
+	leaq	-504(%rbp), %rdi
+	movabsq	$jl_apply_generic, %r12
+	callq	*%r12
+	movq	%rax, -528(%rbp)
+	movq	-88(%rbp), %rcx
+Source line: 64
+	movq	%rcx, -880(%rbp)
+Source line: 64
+	movq	32(%rcx), %rax
+Source line: 764
+	testq	%rax, %rax
+	movl	$0, %ebx
+	cmovnsq	%rax, %rbx
+Source line: 82
+	movq	%rcx, -536(%rbp)
+	leaq	-167569672(%r15), %rax
+	movq	%rax, -208(%rbp)
+	movq	%rax, -552(%rbp)
+	movq	-168(%rbp), %rax
+	movq	%rax, -544(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %r12
+Source line: 82
+	callq	*%r12
+	movq	-160(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	-248(%rbp), %rcx
+	movq	%rcx, (%rax)
+	movq	-216(%rbp), %rcx
+	movq	%rcx, 8(%rax)
+	movq	%rax, -520(%rbp)
+	movl	$1432, %esi             # imm = 0x598
+	movl	$16, %edx
+	movq	%r13, %rdi
+	callq	*%r12
+	movq	-152(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%rbx, -80(%rbp)
+	movq	%rbx, (%rax)
+	movq	%rax, -512(%rbp)
+	movl	$6, %esi
+	movq	%r14, %rdi
+	movabsq	$jl_apply_generic, %rax
+	callq	*%rax
+	movq	-104(%rbp), %r12
+Source line: 86
+	movq	72(%r12), %rax
+	movq	%rax, -872(%rbp)
+	movq	16(%rax), %rbx
+	movq	%rbx, -864(%rbp)
+Source line: 146
+	movq	32(%rbx), %rdx
+	movq	-184(%rbp), %r13
+	movq	%r13, %rdi
+	movq	-96(%rbp), %rsi
+	callq	*%r15
+	movq	%rax, -856(%rbp)
+Source line: 86
+	movl	$78, %esi
+	movl	$78, %edx
+	movq	%rax, %rdi
+	movq	-72(%rbp), %rcx
+	movq	%rbx, %r8
+Source line: 73
+	movabsq	$"generic_matmatmul!", %rax
+Source line: 86
+	callq	*%rax
+	movq	%rax, %rbx
+	movq	%rbx, -848(%rbp)
+	movq	-64(%rbp), %rcx
+	movq	%rcx, -840(%rbp)
+	movq	-8(%rcx), %rax
+	andq	$-16, %rax
+	cmpq	%r13, %rax
+	je	L5184
+	movq	%rcx, -696(%rbp)
+	cmpq	-120(%rbp), %rax
+	je	L5200
+	movq	%rcx, -544(%rbp)
+	movq	80(%r12), %rax
+	movq	%rax, -688(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r15), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %esi
+	leaq	-552(%rbp), %rdi
+Source line: 82
+	movabsq	$jl_apply_generic, %rax
+Source line: 86
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -680(%rbp)
+	movq	-56(%rbp), %r14
+	jmp	L5296
+	nopw	%cs:(%rax,%rax)
+L5184:
+	leaq	-967612096(%r15), %rdi
+	movq	-56(%rbp), %r14
+	jmp	L5211
+	nopl	(%rax)
+L5200:
+	leaq	-976950720(%r15), %rdi
+	movq	-56(%rbp), %r14
+L5211:
+	movq	%rdi, -832(%rbp)
+	movq	%rcx, -544(%rbp)
+	movq	80(%r12), %rax
+	movq	%rax, -824(%rbp)
+	movq	16(%rax), %rax
+	movq	%rax, -536(%rbp)
+	leaq	-174828024(%r15), %rax
+	movq	%rax, -552(%rbp)
+	movl	$3, %edx
+	leaq	-552(%rbp), %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 86
+	callq	*%rax
+	movq	%rax, %r15
+	movq	%r15, -816(%rbp)
+L5296:
+	movq	%r15, -808(%rbp)
+	movq	%r15, -800(%rbp)
+	movq	88(%r12), %rax
+	movq	%rax, -792(%rbp)
+	movq	16(%rax), %r13
+	movq	%r13, -784(%rbp)
+	movq	%rbx, %rax
+Source line: 64
+	movq	24(%rax), %rbx
+	movq	%rax, -64(%rbp)
+	movq	32(%rax), %r12
+Source line: 53
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r14, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 53
+	callq	*%rax
+	movq	-128(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%rax, -776(%rbp)
+	movq	%r15, (%rax)
+	movq	%r13, -72(%rbp)
+	movq	%r13, 8(%rax)
+	leaq	-1696(%rbp), %r13
+	movq	%r13, %rdi
+	movq	%rax, %rsi
+Source line: 53
+	movabsq	$map, %rax
+Source line: 53
+	callq	*%rax
+	testq	%rbx, %rbx
+	movl	$0, %eax
+	cmovsq	%rax, %rbx
+	movq	%rbx, -416(%rbp)
+	testq	%r12, %r12
+	cmovsq	%rax, %r12
+	movq	%r12, -424(%rbp)
+	leaq	-416(%rbp), %rdi
+Source line: 63
+	movq	%r13, %rsi
+Source line: 63
+	movabsq	$_bcs1, %rax
+	movq	%rax, %rbx
+Source line: 63
+	callq	*%rbx
+	movq	%rax, -312(%rbp)
+	leaq	-424(%rbp), %rdi
+Source line: 63
+	leaq	-1688(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, -304(%rbp)
+	leaq	-312(%rbp), %rdi
+Source line: 63
+	leaq	-1680(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %r12
+	leaq	-304(%rbp), %rdi
+Source line: 63
+	leaq	-1672(%rbp), %rsi
+	callq	*%rbx
+	movq	%rax, %rbx
+Source line: 314
+	movq	$1, -1480(%rbp)
+	movq	$1, -1472(%rbp)
+	movq	%r12, -1464(%rbp)
+	movq	%rbx, -1456(%rbp)
+	leaq	-1480(%rbp), %rdi
+Source line: 318
+	movabsq	$isempty, %rax
+Source line: 318
+	callq	*%rax
+	testb	$1, %al
+	movq	%r14, %r13
+	jne	L5856
+	movabsq	$jl_alloc_array_2d, %r14
+Source line: 321
+	leaq	-176054168(%r14), %rax
+	movq	%rax, -552(%rbp)
+	leaq	-116013112(%r14), %rax
+	movq	%rax, -544(%rbp)
+	leaq	-176080352(%r14), %rax
+	movq	%rax, -536(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-169623616(%r14), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r12, (%rax)
+	movq	%rbx, 8(%rax)
+	movq	%rax, -528(%rbp)
+	movl	$1480, %esi             # imm = 0x5C8
+	movl	$48, %edx
+	movq	%r13, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+Source line: 321
+	callq	*%rax
+	leaq	-111889344(%r14), %rcx
+	movq	%rcx, -8(%rax)
+	vmovupd	-1480(%rbp), %ymm0
+	vmovupd	%ymm0, (%rax)
+	movq	%rax, -520(%rbp)
+	movq	-64(%rbp), %rax
+	movq	%rax, -512(%rbp)
+	movq	%r15, -504(%rbp)
+	movq	-72(%rbp), %rax
+	movq	%rax, -496(%rbp)
+	leaq	-983997248(%r14), %rdi
+	movl	$8, %edx
+	leaq	-552(%rbp), %rsi
+Source line: 73
+	movabsq	$jl_invoke, %rax
+Source line: 321
+	vzeroupper
+	callq	*%rax
+	movq	%rax, %r14
+	jmp	L5884
+	nopw	%cs:(%rax,%rax)
+L5856:
+	movabsq	$jl_alloc_array_2d, %rax
+Source line: 319
+	leaq	-171627712(%rax), %rdi
+	movq	%r12, %rsi
+	movq	%rbx, %rdx
+	callq	*%rax
+	movq	%rax, %r14
+L5884:
+	movq	%r14, -768(%rbp)
+Source line: 86
+	movq	%r14, -760(%rbp)
+	movq	-248(%rbp), %r12
+Source line: 555
+	movq	%r12, -1592(%rbp)
+	movq	-216(%rbp), %rdx
+	movq	%rdx, -1584(%rbp)
+	movq	-80(%rbp), %rcx
+Source line: 347
+	imulq	-240(%rbp), %rcx
+	movq	-88(%rbp), %rdi
+Source line: 64
+	movq	%rdi, -752(%rbp)
+Source line: 347
+	testq	%rcx, %rcx
+	movl	$0, %eax
+	cmovnsq	%rcx, %rax
+Source line: 362
+	cmpq	%rax, %r12
+	setle	%cl
+	cmpq	%rax, %rdx
+	setle	%al
+	movzbl	-42(%rbp), %ebx
+	andb	-41(%rbp), %bl
+	andb	%cl, %bl
+	andb	%al, %bl
+	orb	-43(%rbp), %bl
+	je	L6637
+Source line: 221
+	movq	%rdx, %rbx
+	subq	%r12, %rbx
+Source line: 222
+	jo	L6663
+Source line: 164
+	incq	%rbx
+	movabsq	$jl_alloc_array_2d, %r13
+Source line: 165
+	jo	L6692
+Source line: 557
+	leaq	-952036064(%r13), %rdi
+	movq	%rbx, %rsi
+	callq	*-280(%rbp)
+	movq	%rax, %r15
+	movq	%r15, -744(%rbp)
+Source line: 558
+	testq	%rbx, %rbx
+	jle	L6099
+Source line: 559
+	movq	%r15, -736(%rbp)
+	movq	-88(%rbp), %rdx
+	movq	%rdx, -728(%rbp)
+	movl	$1, %esi
+	movq	%r15, %rdi
+	movq	%r12, %rcx
+	movq	%rbx, %r8
+	movabsq	$"unsafe_copy!", %rax
+	callq	*%rax
+Source line: 455
+L6099:
+	movq	%r14, -720(%rbp)
+	movq	-8(%r14), %rax
+	andq	$-16, %rax
+	leaq	-133881104(%r13), %rcx
+	movq	%rcx, -440(%rbp)
+	movq	%rax, -432(%rbp)
+	movl	$2, %esi
+	leaq	-440(%rbp), %rdi
+	movq	%r13, %rbx
+Source line: 82
+	movabsq	$jl_apply_generic, %r13
+Source line: 455
+	callq	*%r13
+	movq	%rax, -456(%rbp)
+	leaq	-133880944(%rbx), %rax
+	movq	%rax, -464(%rbp)
+	leaq	-175997600(%rbx), %rax
+	movq	%rax, -448(%rbp)
+	movl	$3, %esi
+	leaq	-464(%rbp), %rdi
+	callq	*%r13
+	movq	%rax, -488(%rbp)
+Source line: 89
+	movq	%r14, -480(%rbp)
+	movq	%r15, -472(%rbp)
+	leaq	-172051512(%rbx), %rax
+	movq	%rax, -504(%rbp)
+	leaq	-176064408(%rbx), %rax
+	movq	%rax, -496(%rbp)
+	movl	$5, %esi
+	leaq	-504(%rbp), %rdi
+	callq	*%r13
+	movq	%rax, -528(%rbp)
+	movq	-144(%rbp), %rcx
+Source line: 64
+	movq	%rcx, -712(%rbp)
+	movq	32(%rcx), %rax
+Source line: 764
+	testq	%rax, %rax
+	movl	$0, %r14d
+	cmovnsq	%rax, %r14
+Source line: 89
+	movq	%rcx, -536(%rbp)
+	movq	-208(%rbp), %rax
+	movq	%rax, -552(%rbp)
+	movq	-168(%rbp), %rax
+	movq	%rax, -544(%rbp)
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rbx
+	movq	%rbx, %rdi
+Source line: 495
+	movabsq	$jl_gc_pool_alloc, %rax
+	movq	%rax, %r15
+Source line: 89
+	callq	*%r15
+	movq	-160(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r12, (%rax)
+	movq	-216(%rbp), %rcx
+	movq	%rcx, 8(%rax)
+	movq	%rax, -520(%rbp)
+	movl	$1432, %esi             # imm = 0x598
+	movl	$16, %edx
+	movq	%rbx, %rdi
+	callq	*%r15
+	movq	-152(%rbp), %rcx
+	movq	%rcx, -8(%rax)
+	movq	%r14, (%rax)
+	movq	%rax, -512(%rbp)
+	movl	$6, %esi
+	leaq	-552(%rbp), %rdi
+	callq	*%r13
+	movq	-296(%rbp), %rdx
+	movq	-232(%rbp), %r15
+Source line: 65
+	cmpq	-176(%rbp), %r15
+	jne	L784
+Source line: 50
+L6494:
+	movabsq	$jl_gc_pool_alloc, %rax
+	movl	$1456, %esi             # imm = 0x5B0
+	movl	$32, %edx
+	movq	-56(%rbp), %rbx
+	movq	%rbx, %rdi
+	callq	*%rax
+	movabsq	$jl_alloc_array_2d, %rcx
+	addq	$-954654912, %rcx       # imm = 0xC7191F40
+	movq	%rcx, -8(%rax)
+	movq	%rax, -584(%rbp)
+	movq	-88(%rbp), %rcx
+	movq	%rcx, -576(%rbp)
+	movq	%rcx, (%rax)
+	movq	-144(%rbp), %rcx
+	movq	%rcx, -568(%rbp)
+	movq	%rcx, 8(%rax)
+	movq	-1440(%rbp), %rcx
+	movq	%rcx, (%rbx)
+	addq	$1752, %rsp             # imm = 0x6D8
+	popq	%rbx
+	popq	%r12
+	popq	%r13
+	popq	%r14
+	popq	%r15
+	popq	%rbp
+	retq
+Source line: 362
+L6611:
+	movabsq	$throw_boundserror, %rax
+	leaq	-1616(%rbp), %rsi
+	movq	-192(%rbp), %rdi
+	callq	*%rax
+Source line: 362
+L6637:
+	movq	%rdi, -704(%rbp)
+	movabsq	$throw_boundserror, %rax
+	leaq	-1592(%rbp), %rsi
+	callq	*%rax
+L6663:
+	movabsq	$jl_alloc_array_2d, %rdi
+Source line: 222
+	addq	$-173938784, %rdi       # imm = 0xF5A1E7A0
+	movabsq	$jl_throw, %rax
+	callq	*%rax
+Source line: 165
+L6692:
+	addq	$-173938784, %r13       # imm = 0xF5A1E7A0
+	movabsq	$jl_throw, %rax
+	movq	%r13, %rdi
+	callq	*%rax
+Source line: 362
+L6714:
+	movq	%rdi, -592(%rbp)
+	movabsq	$throw_boundserror, %rax
+	leaq	-1640(%rbp), %rsi
+	callq	*%rax
+Source line: 362
+L6740:
+	movq	%rdi, -600(%rbp)
+	movabsq	$throw_boundserror, %rax
+	leaq	-1664(%rbp), %rsi
+	callq	*%rax
+L6766:
+	leaq	-520(%rbp), %rsi
+	leaq	-536(%rbp), %r14
+Source line: 60
+	movq	-123441736(%r12), %rax
+	movq	%rax, -520(%rbp)
+	leaq	-178720808(%r12), %rax
+	movq	%rax, -512(%rbp)
+	movabsq	$jl_f_getfield, %rbx
+	xorl	%edi, %edi
+	movl	$2, %edx
+	callq	*%rbx
+	movq	%rax, -536(%rbp)
+	leaq	-178716024(%r12), %rax
+	movq	%rax, -528(%rbp)
+	xorl	%edi, %edi
+	movl	$2, %edx
+	movq	%r14, %rsi
+	callq	*%rbx
+	movq	%rax, -552(%rbp)
+	addq	$-114817344, %r12       # imm = 0xF92806C0
+	movq	%r12, -544(%rbp)
+	movabsq	$jl_apply_generic, %rax
+	movl	$2, %esi
+	leaq	-552(%rbp), %rdi
+	callq	*%rax
+	movq	%rax, -560(%rbp)
+	movabsq	$jl_throw, %rcx
+	movq	%rax, %rdi
+	callq	*%rcx
+	nopw	%cs:(%rax,%rax)
+@code_native(LSTM_forward(rand_inputs, lstm_cell, input_dim, hidden_dim, seq_len)) = nothing
