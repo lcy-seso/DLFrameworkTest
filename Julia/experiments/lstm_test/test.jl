@@ -14,8 +14,11 @@ const hidden_dim = 4
 rand_inputs = randn(batch_size * seq_len, input_dim)
 
 lstm_cell = LSTMCell(input_dim, hidden_dim)
+cell_state, hidden_states = LSTM_forward(rand_inputs, lstm_cell,
+                                         input_dim, hidden_dim, seq_len)
 
-hidden_init = zeros(batch_size, hidden_dim)
-cell_init = zeros(batch_size, hidden_dim)
+println("cell states :")
+display(cell_state)
 
-lstm = LSTM_forward(rand_inputs, lstm_cell, input_dim, hidden_dim, seq_len)
+println("\nhidden states :")
+display(hidden_states)
