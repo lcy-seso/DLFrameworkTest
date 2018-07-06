@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 
-type LSTMCell  # for test, not optimized
+mutable struct LSTMCell  # for test, not optimized
   # input gate parameters
   wix::Param
   wih::Param
@@ -43,10 +43,9 @@ type LSTMCell  # for test, not optimized
 end
 
 @inline function LSTM_forward(inputs::Array, lstm_cell::LSTMCell,
-                      input_dim::Integer, hidden_dim::Integer,
-                      seq_len::Integer;
-                      cell_act=tanh, output_act=tanh, kwargs...)
-
+                              input_dim::Integer, hidden_dim::Integer,
+                              seq_len::Integer;
+                              cell_act=tanh, output_act=tanh, kwargs...)
   batch_size = size(inputs, 1)
 
   hidden_states::Matrix{AbstractFloat} = zeros(batch_size, hidden_dim)
@@ -87,7 +86,7 @@ end
                   hidden_prev * lstm_cell.woh.w .+ lstm_cell.bo.w)
 
     hidden_states[start : start + sample_num - 1, :] =
-            og .* output_act.(cell_states[start : start + sample_num - 1])
+            og .* output_act.(cell_states[start : start + sample_num - 1, :])
 
     start += sample_num
   end

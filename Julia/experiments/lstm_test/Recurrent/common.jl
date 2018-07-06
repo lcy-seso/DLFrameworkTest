@@ -3,11 +3,11 @@
 abstract type NN
 end
 
-type Param
+mutable struct Param
   n::Integer    # input size
   d::Integer    # output size
-  w::Matrix{AbstractFloat}    # learnable weight matrix
-  dw::Matrix{AbstractFloat}   # gradients of learnable weight matrix
+  w::AbstractArray{AbstractFloat}    # learnable weight matrix
+  dw::AbstractArray{AbstractFloat}   # gradients of learnable weight matrix
 
   Param(n::Integer) = new(n, n, randn(n, n), randn(n, n))
   Param(n::Integer, d::Integer) = new(n, d, randn(n, d), randn(n, d))
