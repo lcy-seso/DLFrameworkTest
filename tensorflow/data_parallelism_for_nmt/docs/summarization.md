@@ -78,7 +78,7 @@ Usually the following factors are ensential to time performance:
 |5|149338.599(3.79)|216412.574(4.24)|
 |6|168780.420(4.29)|238642.350(4.68)|
 |7|184857.154(4.70)|279107.499(5.47)|
-|8||309930.493(6.07)|
+|8|206795.206(5.25)|309930.493(6.07)|
 
 * In the ideal situation, there is no I/O and communication cost. However, `dynamic rnn` scales worse than `cudnn lstm`.
 
@@ -95,7 +95,7 @@ Usually the following factors are ensential to time performance:
     |5|111351.868(2.25)|192827.671(3.79)|190614.737(3.81)|
     |6|121305.375(2.45)|210497.859(4.13)|220829.452(4.42)|
     |7|116744.428(2.36)|227553.456(4.47)|234614.995(4.69)|
-    |8|||274915.239(5.50)|
+    |8|118263.894(2.39)|264045.800(5.18)|274915.239(5.50)|
 
 * If the I/O pipline works correctly, compared to the ideal situation experiment, this test only adds the communication cost.
 * The currently speedup ratio is near the speedup ratio obtained in the *ideal situation experiment*.
@@ -113,7 +113,7 @@ Usually the following factors are ensential to time performance:
     |5|87488.569 (2.45)|125059.488(3.33)|140838.851(3.70)|
     |6|103499.177 (2.90)|135201.853(3.60)|158656.805(4.17)|
     |7|100812.133 (2.83)|146193.808(3.89)|176083.321(4.63)|
-    |8|106740.810 (2.99)||188651.349(4.96)|
+    |8|106740.810 (2.99)|156880.228(4.18)|188651.349(4.96)|
 
 ### `dynamic_rnn` + all reduce
 
@@ -128,8 +128,7 @@ Usually the following factors are ensential to time performance:
     |5|86029.952(2.39)|117674.826(3.16)|129761.878(3.46)|
     |6|85531.174(2.38)|120827.291(3.24)|136668.138(3.65)|
     |7|88995.177(2.47)|124162.210(3.33)|143680.666(3.84)|
-    |8|94099.686(2.61)||151700.671(4.05)|
-
+    |8|94099.686(2.61)|131943.589(3.51)|151700.671(4.05)|
 ## Problems
 
 1. Even in the idea situation, the speedup ratio is below linear. dynamic rnn scale worse than cudnn_lstm.
