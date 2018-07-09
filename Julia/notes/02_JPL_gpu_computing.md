@@ -37,6 +37,7 @@ the `@cuda` macro:
 3. prepare the execution environment
 
 ---
+
 * On average, the CUDAnative.jl ports <span style="background-color:#A3D1D1;">perform identical to statically compiled CUDA C++</span>.
 * Julia has gained support for **[syntactic loop fusion](https://julialang.org/blog/2017/01/moredots)**, where <span style="background-color:#A3D1D1;">chained vector operations</span> are fused into a single broadcast.
 * Julia features a strong foreign function interface (FFI) for calling into other language environments.
