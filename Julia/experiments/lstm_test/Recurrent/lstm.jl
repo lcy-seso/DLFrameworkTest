@@ -42,16 +42,16 @@ mutable struct LSTMCell  # for test, not optimized
   end
 end
 
-@inline function LSTM_forward(inputs::Array, lstm_cell::LSTMCell,
+@inline function LSTM_forward(inputs::AbstractArray, lstm_cell::LSTMCell,
                               input_dim::Integer, hidden_dim::Integer,
                               seq_len::Integer;
                               cell_act=tanh, output_act=tanh, kwargs...)
   batch_size = size(inputs, 1)
 
-  hidden_states::Matrix{AbstractFloat} = zeros(batch_size, hidden_dim)
-  cell_states::Matrix{AbstractFloat} = zeros(batch_size, hidden_dim)
+  hidden_states::AbstractArray{AbstractFloat} = zeros(batch_size, hidden_dim)
+  cell_states::AbstractArray{AbstractFloat} = zeros(batch_size, hidden_dim)
 
-  sample_num = convert(Integer, batch_size / seq_len)
+  sample_num = Integer(batch_size / seq_len)
   if isempty(kwargs)
     hidden_init = zeros(sample_num, hidden_dim)
     cell_init = zeros(sample_num, hidden_dim)
@@ -69,11 +69,11 @@ end
                          cell_init)
 
     # input gate
-    ig = sigmoid.(input_t * lstm_cell.wix.w .+
-                  hidden_prev * lstm_cell.wih.w .+ lstm_cell.bi.w)
+    ig = σ.(input_t * lstm_cell.wix.w .+
+            hidden_prev * lstm_cell.wih.w .+ lstm_cell.bi.w)
     # forget gate
-    fg = sigmoid.(input_t * lstm_cell.wfx.w .+
-                  hidden_prev * lstm_cell.wfh.w .+ lstm_cell.bf.w)
+    fg = σ.(input_t * lstm_cell.wfx.w .+
+            hidden_prev * lstm_cell.wfh.w .+ lstm_cell.bf.w)
 
     # candidate cell
     candidate_cell = cell_act.(input_t * lstm_cell.wcx.w .+
@@ -82,8 +82,8 @@ end
                                                       fg .* cell_prev)
 
     # output gate
-    og = sigmoid.(input_t * lstm_cell.wox.w .+
-                  hidden_prev * lstm_cell.woh.w .+ lstm_cell.bo.w)
+    og = σ.(input_t * lstm_cell.wox.w .+
+            hidden_prev * lstm_cell.woh.w .+ lstm_cell.bo.w)
 
     hidden_states[start : start + sample_num - 1, :] =
             og .* output_act.(cell_states[start : start + sample_num - 1, :])

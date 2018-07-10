@@ -1,0 +1,654 @@
+@code_typed(LSTM_forward(rand_inputs, lstm_cell, input_dim, hidden_dim, seq_len)) = CodeInfo(:(begin 
+        SSAValue(1) = $(Expr(:foreigncall, :(:jl_alloc_array_1d), Array{Any,1}, svec(Any, Int64), Array{Any,1}, 0, 0, 0))
+        $(Expr(:inbounds, false))
+        # meta: location /home/yincao/codes/dl_framework/Julia/experiments/lstm_test/Recurrent/lstm.jl #LSTM_forward#5 50
+        NewvarNode(:(hidden_init))
+        NewvarNode(:(cell_init))
+        NewvarNode(:(start))
+        batch_size = (Base.arraysize)(inputs, 1)::Int64 # line 52:
+        SSAValue(2) = $(Expr(:invoke, MethodInstance for fill!(::Array{Float64,2}, ::Float64), :(Base.fill!), :($(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Float64,2}, svec(Any, Int64, Int64), Array{Float64,2}, 0, :(batch_size), 0, :(hidden_dim), 0))), :((Base.sitofp)(Float64, 0)::Float64)))
+        # meta: location array.jl convert 368
+        SSAValue(43) = (Base.arraysize)(SSAValue(2), 1)::Int64
+        SSAValue(44) = (Base.arraysize)(SSAValue(2), 2)::Int64
+        SSAValue(42) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(43), 0, SSAValue(44), 0))
+        # meta: pop location
+        hidden_states = $(Expr(:invoke, MethodInstance for copy!(::IndexLinear, ::Array{AbstractFloat,2}, ::IndexLinear, ::Array{Float64,2}), :(Base.copy!), :($(QuoteNode(IndexLinear()))), SSAValue(42), :($(QuoteNode(IndexLinear()))), SSAValue(2))) # line 53:
+        SSAValue(3) = $(Expr(:invoke, MethodInstance for fill!(::Array{Float64,2}, ::Float64), :(Base.fill!), :($(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Float64,2}, svec(Any, Int64, Int64), Array{Float64,2}, 0, :(batch_size), 0, :(hidden_dim), 0))), :((Base.sitofp)(Float64, 0)::Float64)))
+        # meta: location array.jl convert 368
+        SSAValue(55) = (Base.arraysize)(SSAValue(3), 1)::Int64
+        SSAValue(56) = (Base.arraysize)(SSAValue(3), 2)::Int64
+        SSAValue(54) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(55), 0, SSAValue(56), 0))
+        # meta: pop location
+        cell_states = $(Expr(:invoke, MethodInstance for copy!(::IndexLinear, ::Array{AbstractFloat,2}, ::IndexLinear, ::Array{Float64,2}), :(Base.copy!), :($(QuoteNode(IndexLinear()))), SSAValue(54), :($(QuoteNode(IndexLinear()))), SSAValue(3))) # line 55:
+        sample_num = $(Expr(:invoke, MethodInstance for convert(::Type{Int64}, ::Float64), :(Base.convert), :(Base.Int), :((Base.div_float)((Base.sitofp)(Float64, batch_size)::Float64, (Base.sitofp)(Float64, seq_len)::Float64)::Float64))) # line 56:
+        # meta: location abstractarray.jl isempty 831
+        # meta: location abstractarray.jl _length 132
+        # meta: location abstractarray.jl indices 64
+        SSAValue(59) = (Base.arraysize)(SSAValue(1), 1)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        unless ((Base.select_value)((Base.slt_int)(SSAValue(59), 0)::Bool, 0, SSAValue(59))::Int64 === 0)::Bool goto 40 # line 57:
+        hidden_init = $(Expr(:invoke, MethodInstance for fill!(::Array{Float64,2}, ::Float64), :(Base.fill!), :($(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Float64,2}, svec(Any, Int64, Int64), Array{Float64,2}, 0, :(sample_num), 0, :(hidden_dim), 0))), :((Base.sitofp)(Float64, 0)::Float64))) # line 58:
+        cell_init = $(Expr(:invoke, MethodInstance for fill!(::Array{Float64,2}, ::Float64), :(Base.fill!), :($(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Float64,2}, svec(Any, Int64, Int64), Array{Float64,2}, 0, :(sample_num), 0, :(hidden_dim), 0))), :((Base.sitofp)(Float64, 0)::Float64)))
+        goto 47
+        40:  # line 60:
+        (Base.arraysize)(SSAValue(1), 1)::Int64
+        goto 44
+        44: 
+        (Base.throw)(((Core.getfield)((Core.getfield)(Base.Main, :Base), :AssertionError))("size(kwargs) == 2"))::Union{} # line 61:
+        47:  # line 64:
+        start = 1 # line 65:
+        SSAValue(341) = (Base.select_value)((Base.sle_int)(1, seq_len)::Bool, seq_len, (Base.sub_int)(1, 1)::Int64)::Int64
+        #temp#@_21 = 1
+        53: 
+        unless (Base.not_int)((#temp#@_21 === (Base.add_int)(SSAValue(341), 1)::Int64)::Bool)::Bool goto 713
+        NewvarNode(:(#6))
+        NewvarNode(:(#7))
+        NewvarNode(:(#8))
+        NewvarNode(:(#9))
+        NewvarNode(:(#10))
+        NewvarNode(:(#11))
+        NewvarNode(:(hidden_prev))
+        NewvarNode(:(cell_prev))
+        NewvarNode(:(ig))
+        NewvarNode(:(fg))
+        NewvarNode(:(candidate_cell))
+        NewvarNode(:(og))
+        SSAValue(342) = #temp#@_21
+        SSAValue(343) = (Base.add_int)(#temp#@_21, 1)::Int64
+        #temp#@_21 = SSAValue(343) # line 66:
+        SSAValue(72) = (Base.sub_int)((Base.add_int)(start, sample_num)::Int64, 1)::Int64
+        # meta: location abstractarray.jl getindex 883
+        # meta: location indices.jl to_indices 213
+        # meta: location abstractarray.jl indices 64
+        (Base.arraysize)(inputs, 1)::Int64
+        SSAValue(77) = (Base.arraysize)(inputs, 2)::Int64
+        # meta: pop location
+        # meta: location indices.jl to_indices 215
+        # meta: location multidimensional.jl to_indices 469
+        # meta: location multidimensional.jl uncolon 476
+        # meta: location indices.jl Type 233
+        # meta: location indices.jl Type 233
+        # meta: location range.jl convert 764
+        SSAValue(78) = (Base.select_value)((Base.slt_int)(SSAValue(77), 0)::Bool, 0, SSAValue(77))::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(93) = $(Expr(:new, UnitRange{Int64}, :(start), :((Base.select_value)((Base.sle_int)(start, SSAValue(72))::Bool, SSAValue(72), (Base.sub_int)(start, 1)::Int64)::Int64)))
+        SSAValue(94) = $(Expr(:new, Base.Slice{Base.OneTo{Int64}}, :($(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(78), 0)::Bool, 0, SSAValue(78))::Int64))))))
+        # meta: location multidimensional.jl _getindex 491
+        # meta: location multidimensional.jl # line 494:
+        SSAValue(81) = (Core.tuple)(SSAValue(93), SSAValue(94))::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}
+        # meta: location abstractarray.jl checkbounds 362
+        # meta: location abstractarray.jl checkbounds 342
+        # meta: location abstractarray.jl indices 64
+        SSAValue(86) = (Base.arraysize)(inputs, 1)::Int64
+        (Base.arraysize)(inputs, 2)::Int64
+        # meta: pop location
+        # meta: location abstractarray.jl checkbounds_indices 389
+        SSAValue(92) = (Base.select_value)((Base.slt_int)(SSAValue(86), 0)::Bool, 0, SSAValue(86))::Int64
+        SSAValue(88) = (Core.getfield)(SSAValue(81), 1)::UnitRange{Int64}
+        # meta: location abstractarray.jl checkindex 460
+        SSAValue(91) = (Core.getfield)(SSAValue(88), :start)::Int64
+        SSAValue(90) = (Core.getfield)(SSAValue(88), :stop)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(82) = (Base.and_int)((Base.or_int)((Base.slt_int)((Core.getfield)(SSAValue(88), :stop)::Int64, (Core.getfield)(SSAValue(88), :start)::Int64)::Bool, (Base.and_int)((Base.and_int)((Base.sle_int)(1, SSAValue(91))::Bool, (Base.sle_int)(SSAValue(91), SSAValue(92))::Bool)::Bool, (Base.and_int)((Base.sle_int)(1, SSAValue(90))::Bool, (Base.sle_int)(SSAValue(90), SSAValue(92))::Bool)::Bool)::Bool)::Bool, true)::Bool
+        unless SSAValue(82) goto 116
+        goto 118
+        116: 
+        $(Expr(:invoke, MethodInstance for throw_boundserror(::Array{Float64,2}, ::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}), :(Base.throw_boundserror), :(inputs), SSAValue(81)))
+        118: 
+        # meta: pop location # line 495:
+        SSAValue(80) = $(Expr(:invoke, MethodInstance for _unsafe_getindex(::IndexLinear, ::Array{Float64,2}, ::UnitRange{Int64}, ::Base.Slice{Base.OneTo{Int64}}), :(Base._unsafe_getindex), :($(QuoteNode(IndexLinear()))), :(inputs), SSAValue(93), SSAValue(94)))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location # line 67:
+        unless (Base.slt_int)(1, SSAValue(342))::Bool goto 184
+        SSAValue(96) = (Base.sub_int)(start, sample_num)::Int64
+        SSAValue(95) = (Base.sub_int)(start, 1)::Int64
+        # meta: location abstractarray.jl getindex 883
+        # meta: location indices.jl to_indices 213
+        # meta: location abstractarray.jl indices 64
+        (Base.arraysize)(hidden_states, 1)::Int64
+        SSAValue(101) = (Base.arraysize)(hidden_states, 2)::Int64
+        # meta: pop location
+        # meta: location indices.jl to_indices 215
+        # meta: location multidimensional.jl to_indices 469
+        # meta: location multidimensional.jl uncolon 476
+        # meta: location indices.jl Type 233
+        # meta: location indices.jl Type 233
+        # meta: location range.jl convert 764
+        SSAValue(102) = (Base.select_value)((Base.slt_int)(SSAValue(101), 0)::Bool, 0, SSAValue(101))::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(117) = $(Expr(:new, UnitRange{Int64}, SSAValue(96), :((Base.select_value)((Base.sle_int)(SSAValue(96), SSAValue(95))::Bool, SSAValue(95), (Base.sub_int)(SSAValue(96), 1)::Int64)::Int64)))
+        SSAValue(118) = $(Expr(:new, Base.Slice{Base.OneTo{Int64}}, :($(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(102), 0)::Bool, 0, SSAValue(102))::Int64))))))
+        # meta: location multidimensional.jl _getindex 491
+        # meta: location multidimensional.jl # line 494:
+        SSAValue(105) = (Core.tuple)(SSAValue(117), SSAValue(118))::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}
+        # meta: location abstractarray.jl checkbounds 362
+        # meta: location abstractarray.jl checkbounds 342
+        # meta: location abstractarray.jl indices 64
+        SSAValue(110) = (Base.arraysize)(hidden_states, 1)::Int64
+        (Base.arraysize)(hidden_states, 2)::Int64
+        # meta: pop location
+        # meta: location abstractarray.jl checkbounds_indices 389
+        SSAValue(116) = (Base.select_value)((Base.slt_int)(SSAValue(110), 0)::Bool, 0, SSAValue(110))::Int64
+        SSAValue(112) = (Core.getfield)(SSAValue(105), 1)::UnitRange{Int64}
+        # meta: location abstractarray.jl checkindex 460
+        SSAValue(115) = (Core.getfield)(SSAValue(112), :start)::Int64
+        SSAValue(114) = (Core.getfield)(SSAValue(112), :stop)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(106) = (Base.and_int)((Base.or_int)((Base.slt_int)((Core.getfield)(SSAValue(112), :stop)::Int64, (Core.getfield)(SSAValue(112), :start)::Int64)::Bool, (Base.and_int)((Base.and_int)((Base.sle_int)(1, SSAValue(115))::Bool, (Base.sle_int)(SSAValue(115), SSAValue(116))::Bool)::Bool, (Base.and_int)((Base.sle_int)(1, SSAValue(114))::Bool, (Base.sle_int)(SSAValue(114), SSAValue(116))::Bool)::Bool)::Bool)::Bool, true)::Bool
+        unless SSAValue(106) goto 173
+        goto 175
+        173: 
+        $(Expr(:invoke, MethodInstance for throw_boundserror(::Array{AbstractFloat,2}, ::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}), :(Base.throw_boundserror), :(hidden_states), SSAValue(105)))
+        175: 
+        # meta: pop location # line 495:
+        SSAValue(104) = $(Expr(:invoke, MethodInstance for _unsafe_getindex(::IndexLinear, ::Array{AbstractFloat,2}, ::UnitRange{Int64}, ::Base.Slice{Base.OneTo{Int64}}), :(Base._unsafe_getindex), :($(QuoteNode(IndexLinear()))), :(hidden_states), SSAValue(117), SSAValue(118)))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        #temp#@_30 = SSAValue(104)
+        goto 186
+        184: 
+        #temp#@_30 = hidden_init
+        186: 
+        hidden_prev = #temp#@_30 # line 69:
+        unless (Base.slt_int)(1, SSAValue(342))::Bool goto 247
+        SSAValue(120) = (Base.sub_int)(start, sample_num)::Int64
+        SSAValue(119) = (Base.sub_int)(start, 1)::Int64
+        # meta: location abstractarray.jl getindex 883
+        # meta: location indices.jl to_indices 213
+        # meta: location abstractarray.jl indices 64
+        (Base.arraysize)(cell_states, 1)::Int64
+        SSAValue(125) = (Base.arraysize)(cell_states, 2)::Int64
+        # meta: pop location
+        # meta: location indices.jl to_indices 215
+        # meta: location multidimensional.jl to_indices 469
+        # meta: location multidimensional.jl uncolon 476
+        # meta: location indices.jl Type 233
+        # meta: location indices.jl Type 233
+        # meta: location range.jl convert 764
+        SSAValue(126) = (Base.select_value)((Base.slt_int)(SSAValue(125), 0)::Bool, 0, SSAValue(125))::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(141) = $(Expr(:new, UnitRange{Int64}, SSAValue(120), :((Base.select_value)((Base.sle_int)(SSAValue(120), SSAValue(119))::Bool, SSAValue(119), (Base.sub_int)(SSAValue(120), 1)::Int64)::Int64)))
+        SSAValue(142) = $(Expr(:new, Base.Slice{Base.OneTo{Int64}}, :($(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(126), 0)::Bool, 0, SSAValue(126))::Int64))))))
+        # meta: location multidimensional.jl _getindex 491
+        # meta: location multidimensional.jl # line 494:
+        SSAValue(129) = (Core.tuple)(SSAValue(141), SSAValue(142))::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}
+        # meta: location abstractarray.jl checkbounds 362
+        # meta: location abstractarray.jl checkbounds 342
+        # meta: location abstractarray.jl indices 64
+        SSAValue(134) = (Base.arraysize)(cell_states, 1)::Int64
+        (Base.arraysize)(cell_states, 2)::Int64
+        # meta: pop location
+        # meta: location abstractarray.jl checkbounds_indices 389
+        SSAValue(140) = (Base.select_value)((Base.slt_int)(SSAValue(134), 0)::Bool, 0, SSAValue(134))::Int64
+        SSAValue(136) = (Core.getfield)(SSAValue(129), 1)::UnitRange{Int64}
+        # meta: location abstractarray.jl checkindex 460
+        SSAValue(139) = (Core.getfield)(SSAValue(136), :start)::Int64
+        SSAValue(138) = (Core.getfield)(SSAValue(136), :stop)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(130) = (Base.and_int)((Base.or_int)((Base.slt_int)((Core.getfield)(SSAValue(136), :stop)::Int64, (Core.getfield)(SSAValue(136), :start)::Int64)::Bool, (Base.and_int)((Base.and_int)((Base.sle_int)(1, SSAValue(139))::Bool, (Base.sle_int)(SSAValue(139), SSAValue(140))::Bool)::Bool, (Base.and_int)((Base.sle_int)(1, SSAValue(138))::Bool, (Base.sle_int)(SSAValue(138), SSAValue(140))::Bool)::Bool)::Bool)::Bool, true)::Bool
+        unless SSAValue(130) goto 236
+        goto 238
+        236: 
+        $(Expr(:invoke, MethodInstance for throw_boundserror(::Array{AbstractFloat,2}, ::Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}}), :(Base.throw_boundserror), :(cell_states), SSAValue(129)))
+        238: 
+        # meta: pop location # line 495:
+        SSAValue(128) = $(Expr(:invoke, MethodInstance for _unsafe_getindex(::IndexLinear, ::Array{AbstractFloat,2}, ::UnitRange{Int64}, ::Base.Slice{Base.OneTo{Int64}}), :(Base._unsafe_getindex), :($(QuoteNode(IndexLinear()))), :(cell_states), SSAValue(141), SSAValue(142)))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        #temp#@_31 = SSAValue(128)
+        goto 249
+        247: 
+        #temp#@_31 = cell_init
+        249: 
+        cell_prev = #temp#@_31 # line 73:
+        #6 = $(Expr(:new, :(Recurrent.##6#12)))
+        SSAValue(143) = (Core.getfield)((Core.getfield)(lstm_cell, :wix)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location linalg/matmul.jl * 146
+        SSAValue(148) = (Base.arraysize)(SSAValue(80), 1)::Int64
+        SSAValue(149) = (Base.arraysize)(SSAValue(143), 2)::Int64
+        SSAValue(147) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(148), 0, SSAValue(149), 0))
+        # meta: pop location
+        SSAValue(9) = $(Expr(:invoke, MethodInstance for generic_matmatmul!(::Array{AbstractFloat,2}, ::Char, ::Char, ::Array{Float64,2}, ::Array{AbstractFloat,2}), :(Base.LinAlg.generic_matmatmul!), SSAValue(147), 'N', 'N', SSAValue(80), SSAValue(143)))
+        unless (hidden_prev isa Array{AbstractFloat,2})::Bool goto 263
+        #temp#@_33 = MethodInstance for *(::Array{AbstractFloat,2}, ::Array{AbstractFloat,2})
+        goto 272
+        263: 
+        unless (hidden_prev isa Array{Float64,2})::Bool goto 267
+        #temp#@_33 = MethodInstance for *(::Array{Float64,2}, ::Array{AbstractFloat,2})
+        goto 272
+        267: 
+        goto 269
+        269: 
+        #temp#@_34 = (hidden_prev * (Core.getfield)((Core.getfield)(lstm_cell, :wih)::Recurrent.Param, :w)::Array{AbstractFloat,2})::Array{AbstractFloat,2}
+        goto 274
+        272: 
+        #temp#@_34 = $(Expr(:invoke, :(#temp#@_33), :(Recurrent.*), :(hidden_prev), :((Core.getfield)((Core.getfield)(lstm_cell, :wih)::Recurrent.Param, :w)::Array{AbstractFloat,2})))
+        274: 
+        SSAValue(10) = #temp#@_34
+        SSAValue(11) = (Core.getfield)((Core.getfield)(lstm_cell, :bi)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location broadcast.jl broadcast 455
+        # meta: location broadcast.jl broadcast_c 313
+        # meta: location broadcast.jl broadcast_indices 53
+        # meta: location broadcast.jl broadcast_indices 48
+        # meta: location broadcast.jl broadcast_indices 52
+        # meta: location abstractarray.jl indices 64
+        SSAValue(154) = (Base.arraysize)(SSAValue(9), 1)::Int64
+        SSAValue(155) = (Base.arraysize)(SSAValue(9), 2)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(156) = $(Expr(:invoke, MethodInstance for map(::Base.Broadcast.#broadcast_indices, ::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}), :(Base.Broadcast.map), :(Base.Broadcast.broadcast_indices), :((Core.tuple)(SSAValue(10), SSAValue(11))::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}})))
+        SSAValue(167) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(154), 0)::Bool, 0, SSAValue(154))::Int64)))
+        SSAValue(168) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(155), 0)::Bool, 0, SSAValue(155))::Int64)))
+        SSAValue(169) = (Core.getfield)(SSAValue(156), 1)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        SSAValue(170) = (Core.getfield)(SSAValue(156), 2)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_38 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(167), :((Base.getfield)(SSAValue(169), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_39 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(168), :((Core.getfield)(SSAValue(169), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_40 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_38), :((Base.getfield)(SSAValue(170), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_41 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_39), :((Core.getfield)(SSAValue(170), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        shape@_36 = (Core.tuple)(newout@_40, newout@_41)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}} # line 314:
+        iter@_37 = $(Expr(:new, CartesianRange{CartesianIndex{2}}, :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)(1, 1)::Tuple{Int64,Int64})))), :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)((Core.getfield)((Base.getfield)(shape@_36, 1)::Base.OneTo{Int64}, :stop)::Int64, (Core.getfield)((Base.getfield)(shape@_36, 2)::Base.OneTo{Int64}, :stop)::Int64)::Tuple{Int64,Int64})))))) # line 315:
+        goto 320 # line 316:
+        320:  # line 318:
+        unless $(Expr(:invoke, MethodInstance for isempty(::CartesianRange{CartesianIndex{2}}), :(Base.Broadcast.isempty), :(iter@_37))) goto 330 # line 319:
+        # meta: location abstractarray.jl similar 565
+        SSAValue(174) = (Core.getfield)((Base.getfield)(shape@_36, 1)::Base.OneTo{Int64}, :stop)::Int64
+        SSAValue(175) = (Core.getfield)((Base.getfield)(shape@_36, 2)::Base.OneTo{Int64}, :stop)::Int64
+        # meta: pop location
+        #temp#@_42 = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Any,2}, svec(Any, Int64, Int64), Array{Any,2}, 0, SSAValue(174), 0, SSAValue(175), 0))
+        goto 333
+        330:  # line 321:
+        #temp#@_42 = $(Expr(:invoke, MethodInstance for broadcast_t(::Function, ::Type{Any}, ::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}, ::CartesianRange{CartesianIndex{2}}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Vararg{Array{AbstractFloat,2},N} where N), :(Base.Broadcast.broadcast_t), :(#6), :(Base.Broadcast.Any), :(shape@_36), :(iter@_37), SSAValue(9), SSAValue(10), SSAValue(11)))
+        333: 
+        # meta: pop location
+        # meta: pop location
+        ig = #temp#@_42 # line 76:
+        #7 = $(Expr(:new, :(Recurrent.##7#13)))
+        SSAValue(178) = (Core.getfield)((Core.getfield)(lstm_cell, :wfx)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location linalg/matmul.jl * 146
+        SSAValue(183) = (Base.arraysize)(SSAValue(80), 1)::Int64
+        SSAValue(184) = (Base.arraysize)(SSAValue(178), 2)::Int64
+        SSAValue(182) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(183), 0, SSAValue(184), 0))
+        # meta: pop location
+        SSAValue(13) = $(Expr(:invoke, MethodInstance for generic_matmatmul!(::Array{AbstractFloat,2}, ::Char, ::Char, ::Array{Float64,2}, ::Array{AbstractFloat,2}), :(Base.LinAlg.generic_matmatmul!), SSAValue(182), 'N', 'N', SSAValue(80), SSAValue(178)))
+        unless (hidden_prev isa Array{AbstractFloat,2})::Bool goto 349
+        #temp#@_44 = MethodInstance for *(::Array{AbstractFloat,2}, ::Array{AbstractFloat,2})
+        goto 358
+        349: 
+        unless (hidden_prev isa Array{Float64,2})::Bool goto 353
+        #temp#@_44 = MethodInstance for *(::Array{Float64,2}, ::Array{AbstractFloat,2})
+        goto 358
+        353: 
+        goto 355
+        355: 
+        #temp#@_45 = (hidden_prev * (Core.getfield)((Core.getfield)(lstm_cell, :wfh)::Recurrent.Param, :w)::Array{AbstractFloat,2})::Array{AbstractFloat,2}
+        goto 360
+        358: 
+        #temp#@_45 = $(Expr(:invoke, :(#temp#@_44), :(Recurrent.*), :(hidden_prev), :((Core.getfield)((Core.getfield)(lstm_cell, :wfh)::Recurrent.Param, :w)::Array{AbstractFloat,2})))
+        360: 
+        SSAValue(14) = #temp#@_45
+        SSAValue(15) = (Core.getfield)((Core.getfield)(lstm_cell, :bf)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location broadcast.jl broadcast 455
+        # meta: location broadcast.jl broadcast_c 313
+        # meta: location broadcast.jl broadcast_indices 53
+        # meta: location broadcast.jl broadcast_indices 48
+        # meta: location broadcast.jl broadcast_indices 52
+        # meta: location abstractarray.jl indices 64
+        SSAValue(189) = (Base.arraysize)(SSAValue(13), 1)::Int64
+        SSAValue(190) = (Base.arraysize)(SSAValue(13), 2)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(191) = $(Expr(:invoke, MethodInstance for map(::Base.Broadcast.#broadcast_indices, ::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}), :(Base.Broadcast.map), :(Base.Broadcast.broadcast_indices), :((Core.tuple)(SSAValue(14), SSAValue(15))::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}})))
+        SSAValue(202) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(189), 0)::Bool, 0, SSAValue(189))::Int64)))
+        SSAValue(203) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(190), 0)::Bool, 0, SSAValue(190))::Int64)))
+        SSAValue(204) = (Core.getfield)(SSAValue(191), 1)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        SSAValue(205) = (Core.getfield)(SSAValue(191), 2)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_49 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(202), :((Base.getfield)(SSAValue(204), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_50 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(203), :((Core.getfield)(SSAValue(204), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_51 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_49), :((Base.getfield)(SSAValue(205), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_52 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_50), :((Core.getfield)(SSAValue(205), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        shape@_47 = (Core.tuple)(newout@_51, newout@_52)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}} # line 314:
+        iter@_48 = $(Expr(:new, CartesianRange{CartesianIndex{2}}, :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)(1, 1)::Tuple{Int64,Int64})))), :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)((Core.getfield)((Base.getfield)(shape@_47, 1)::Base.OneTo{Int64}, :stop)::Int64, (Core.getfield)((Base.getfield)(shape@_47, 2)::Base.OneTo{Int64}, :stop)::Int64)::Tuple{Int64,Int64})))))) # line 315:
+        goto 406 # line 316:
+        406:  # line 318:
+        unless $(Expr(:invoke, MethodInstance for isempty(::CartesianRange{CartesianIndex{2}}), :(Base.Broadcast.isempty), :(iter@_48))) goto 416 # line 319:
+        # meta: location abstractarray.jl similar 565
+        SSAValue(209) = (Core.getfield)((Base.getfield)(shape@_47, 1)::Base.OneTo{Int64}, :stop)::Int64
+        SSAValue(210) = (Core.getfield)((Base.getfield)(shape@_47, 2)::Base.OneTo{Int64}, :stop)::Int64
+        # meta: pop location
+        #temp#@_53 = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Any,2}, svec(Any, Int64, Int64), Array{Any,2}, 0, SSAValue(209), 0, SSAValue(210), 0))
+        goto 419
+        416:  # line 321:
+        #temp#@_53 = $(Expr(:invoke, MethodInstance for broadcast_t(::Function, ::Type{Any}, ::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}, ::CartesianRange{CartesianIndex{2}}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Vararg{Array{AbstractFloat,2},N} where N), :(Base.Broadcast.broadcast_t), :(#7), :(Base.Broadcast.Any), :(shape@_47), :(iter@_48), SSAValue(13), SSAValue(14), SSAValue(15)))
+        419: 
+        # meta: pop location
+        # meta: pop location
+        fg = #temp#@_53 # line 80:
+        #8 = $(Expr(:new, Recurrent.##8#14{Base.#tanh}, :(Recurrent.tanh)))
+        SSAValue(213) = (Core.getfield)((Core.getfield)(lstm_cell, :wcx)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location linalg/matmul.jl * 146
+        SSAValue(218) = (Base.arraysize)(SSAValue(80), 1)::Int64
+        SSAValue(219) = (Base.arraysize)(SSAValue(213), 2)::Int64
+        SSAValue(217) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(218), 0, SSAValue(219), 0))
+        # meta: pop location
+        SSAValue(17) = $(Expr(:invoke, MethodInstance for generic_matmatmul!(::Array{AbstractFloat,2}, ::Char, ::Char, ::Array{Float64,2}, ::Array{AbstractFloat,2}), :(Base.LinAlg.generic_matmatmul!), SSAValue(217), 'N', 'N', SSAValue(80), SSAValue(213)))
+        unless (hidden_prev isa Array{AbstractFloat,2})::Bool goto 435
+        #temp#@_55 = MethodInstance for *(::Array{AbstractFloat,2}, ::Array{AbstractFloat,2})
+        goto 444
+        435: 
+        unless (hidden_prev isa Array{Float64,2})::Bool goto 439
+        #temp#@_55 = MethodInstance for *(::Array{Float64,2}, ::Array{AbstractFloat,2})
+        goto 444
+        439: 
+        goto 441
+        441: 
+        #temp#@_56 = (hidden_prev * (Core.getfield)((Core.getfield)(lstm_cell, :wch)::Recurrent.Param, :w)::Array{AbstractFloat,2})::Array{AbstractFloat,2}
+        goto 446
+        444: 
+        #temp#@_56 = $(Expr(:invoke, :(#temp#@_55), :(Recurrent.*), :(hidden_prev), :((Core.getfield)((Core.getfield)(lstm_cell, :wch)::Recurrent.Param, :w)::Array{AbstractFloat,2})))
+        446: 
+        SSAValue(18) = #temp#@_56
+        SSAValue(19) = (Core.getfield)((Core.getfield)(lstm_cell, :bc)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location broadcast.jl broadcast 455
+        # meta: location broadcast.jl broadcast_c 313
+        # meta: location broadcast.jl broadcast_indices 53
+        # meta: location broadcast.jl broadcast_indices 48
+        # meta: location broadcast.jl broadcast_indices 52
+        # meta: location abstractarray.jl indices 64
+        SSAValue(224) = (Base.arraysize)(SSAValue(17), 1)::Int64
+        SSAValue(225) = (Base.arraysize)(SSAValue(17), 2)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(226) = $(Expr(:invoke, MethodInstance for map(::Base.Broadcast.#broadcast_indices, ::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}), :(Base.Broadcast.map), :(Base.Broadcast.broadcast_indices), :((Core.tuple)(SSAValue(18), SSAValue(19))::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}})))
+        SSAValue(237) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(224), 0)::Bool, 0, SSAValue(224))::Int64)))
+        SSAValue(238) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(225), 0)::Bool, 0, SSAValue(225))::Int64)))
+        SSAValue(239) = (Core.getfield)(SSAValue(226), 1)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        SSAValue(240) = (Core.getfield)(SSAValue(226), 2)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_60 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(237), :((Base.getfield)(SSAValue(239), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_61 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(238), :((Core.getfield)(SSAValue(239), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_62 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_60), :((Base.getfield)(SSAValue(240), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_63 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_61), :((Core.getfield)(SSAValue(240), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        shape@_58 = (Core.tuple)(newout@_62, newout@_63)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}} # line 314:
+        iter@_59 = $(Expr(:new, CartesianRange{CartesianIndex{2}}, :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)(1, 1)::Tuple{Int64,Int64})))), :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)((Core.getfield)((Base.getfield)(shape@_58, 1)::Base.OneTo{Int64}, :stop)::Int64, (Core.getfield)((Base.getfield)(shape@_58, 2)::Base.OneTo{Int64}, :stop)::Int64)::Tuple{Int64,Int64})))))) # line 315:
+        goto 492 # line 316:
+        492:  # line 318:
+        unless $(Expr(:invoke, MethodInstance for isempty(::CartesianRange{CartesianIndex{2}}), :(Base.Broadcast.isempty), :(iter@_59))) goto 502 # line 319:
+        # meta: location abstractarray.jl similar 565
+        SSAValue(244) = (Core.getfield)((Base.getfield)(shape@_58, 1)::Base.OneTo{Int64}, :stop)::Int64
+        SSAValue(245) = (Core.getfield)((Base.getfield)(shape@_58, 2)::Base.OneTo{Int64}, :stop)::Int64
+        # meta: pop location
+        #temp#@_64 = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Any,2}, svec(Any, Int64, Int64), Array{Any,2}, 0, SSAValue(244), 0, SSAValue(245), 0))
+        goto 505
+        502:  # line 321:
+        #temp#@_64 = $(Expr(:invoke, MethodInstance for broadcast_t(::Function, ::Type{Any}, ::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}, ::CartesianRange{CartesianIndex{2}}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Vararg{Array{AbstractFloat,2},N} where N), :(Base.Broadcast.broadcast_t), :(#8), :(Base.Broadcast.Any), :(shape@_58), :(iter@_59), SSAValue(17), SSAValue(18), SSAValue(19)))
+        505: 
+        # meta: pop location
+        # meta: pop location
+        candidate_cell = #temp#@_64 # line 82:
+        #9 = $(Expr(:new, :(Recurrent.##9#15)))
+        SSAValue(24) = (Base.broadcast)(#9, ig, candidate_cell, fg, cell_prev)
+        SSAValue(248) = (Base.sub_int)((Base.add_int)(start, sample_num)::Int64, 1)::Int64
+        # meta: location abstractarray.jl setindex! 968
+        # meta: location indices.jl to_indices 213
+        # meta: location abstractarray.jl indices 64
+        (Base.arraysize)(cell_states, 1)::Int64
+        SSAValue(253) = (Base.arraysize)(cell_states, 2)::Int64
+        # meta: pop location
+        # meta: location indices.jl to_indices 215
+        # meta: location multidimensional.jl to_indices 469
+        # meta: location multidimensional.jl uncolon 476
+        # meta: location indices.jl Type 233
+        # meta: location indices.jl Type 233
+        # meta: location range.jl convert 764
+        SSAValue(254) = (Base.select_value)((Base.slt_int)(SSAValue(253), 0)::Bool, 0, SSAValue(253))::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        (Base._setindex!)($(QuoteNode(IndexLinear())), cell_states, SSAValue(24), $(Expr(:new, UnitRange{Int64}, :(start), :((Base.select_value)((Base.sle_int)(start, SSAValue(248))::Bool, SSAValue(248), (Base.sub_int)(start, 1)::Int64)::Int64))), $(Expr(:new, Base.Slice{Base.OneTo{Int64}}, :($(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(254), 0)::Bool, 0, SSAValue(254))::Int64))))))) # line 86:
+        #10 = $(Expr(:new, :(Recurrent.##10#16)))
+        SSAValue(255) = (Core.getfield)((Core.getfield)(lstm_cell, :wox)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location linalg/matmul.jl * 146
+        SSAValue(260) = (Base.arraysize)(SSAValue(80), 1)::Int64
+        SSAValue(261) = (Base.arraysize)(SSAValue(255), 2)::Int64
+        SSAValue(259) = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{AbstractFloat,2}, svec(Any, Int64, Int64), Array{AbstractFloat,2}, 0, SSAValue(260), 0, SSAValue(261), 0))
+        # meta: pop location
+        SSAValue(26) = $(Expr(:invoke, MethodInstance for generic_matmatmul!(::Array{AbstractFloat,2}, ::Char, ::Char, ::Array{Float64,2}, ::Array{AbstractFloat,2}), :(Base.LinAlg.generic_matmatmul!), SSAValue(259), 'N', 'N', SSAValue(80), SSAValue(255)))
+        unless (hidden_prev isa Array{AbstractFloat,2})::Bool goto 547
+        #temp#@_67 = MethodInstance for *(::Array{AbstractFloat,2}, ::Array{AbstractFloat,2})
+        goto 556
+        547: 
+        unless (hidden_prev isa Array{Float64,2})::Bool goto 551
+        #temp#@_67 = MethodInstance for *(::Array{Float64,2}, ::Array{AbstractFloat,2})
+        goto 556
+        551: 
+        goto 553
+        553: 
+        #temp#@_68 = (hidden_prev * (Core.getfield)((Core.getfield)(lstm_cell, :woh)::Recurrent.Param, :w)::Array{AbstractFloat,2})::Array{AbstractFloat,2}
+        goto 558
+        556: 
+        #temp#@_68 = $(Expr(:invoke, :(#temp#@_67), :(Recurrent.*), :(hidden_prev), :((Core.getfield)((Core.getfield)(lstm_cell, :woh)::Recurrent.Param, :w)::Array{AbstractFloat,2})))
+        558: 
+        SSAValue(27) = #temp#@_68
+        SSAValue(28) = (Core.getfield)((Core.getfield)(lstm_cell, :bo)::Recurrent.Param, :w)::Array{AbstractFloat,2}
+        # meta: location broadcast.jl broadcast 455
+        # meta: location broadcast.jl broadcast_c 313
+        # meta: location broadcast.jl broadcast_indices 53
+        # meta: location broadcast.jl broadcast_indices 48
+        # meta: location broadcast.jl broadcast_indices 52
+        # meta: location abstractarray.jl indices 64
+        SSAValue(266) = (Base.arraysize)(SSAValue(26), 1)::Int64
+        SSAValue(267) = (Base.arraysize)(SSAValue(26), 2)::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        SSAValue(268) = $(Expr(:invoke, MethodInstance for map(::Base.Broadcast.#broadcast_indices, ::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}), :(Base.Broadcast.map), :(Base.Broadcast.broadcast_indices), :((Core.tuple)(SSAValue(27), SSAValue(28))::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}})))
+        SSAValue(279) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(266), 0)::Bool, 0, SSAValue(266))::Int64)))
+        SSAValue(280) = $(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(267), 0)::Bool, 0, SSAValue(267))::Int64)))
+        SSAValue(281) = (Core.getfield)(SSAValue(268), 1)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        SSAValue(282) = (Core.getfield)(SSAValue(268), 2)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_72 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(279), :((Base.getfield)(SSAValue(281), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_73 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), SSAValue(280), :((Core.getfield)(SSAValue(281), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: location broadcast.jl broadcast_shape 57
+        # meta: location broadcast.jl _bcs 63
+        newout@_74 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_72), :((Base.getfield)(SSAValue(282), 1)::Base.OneTo{Int64}))) # line 64:
+        # meta: location broadcast.jl _bcs 63
+        newout@_75 = $(Expr(:invoke, MethodInstance for _bcs1(::Base.OneTo{Int64}, ::Base.OneTo{Int64}), :(Base.Broadcast._bcs1), :(newout@_73), :((Core.getfield)(SSAValue(282), 2)::Base.OneTo{Int64})))
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        shape@_70 = (Core.tuple)(newout@_74, newout@_75)::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}} # line 314:
+        iter@_71 = $(Expr(:new, CartesianRange{CartesianIndex{2}}, :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)(1, 1)::Tuple{Int64,Int64})))), :($(Expr(:new, CartesianIndex{2}, :((Core.tuple)((Core.getfield)((Base.getfield)(shape@_70, 1)::Base.OneTo{Int64}, :stop)::Int64, (Core.getfield)((Base.getfield)(shape@_70, 2)::Base.OneTo{Int64}, :stop)::Int64)::Tuple{Int64,Int64})))))) # line 315:
+        goto 604 # line 316:
+        604:  # line 318:
+        unless $(Expr(:invoke, MethodInstance for isempty(::CartesianRange{CartesianIndex{2}}), :(Base.Broadcast.isempty), :(iter@_71))) goto 614 # line 319:
+        # meta: location abstractarray.jl similar 565
+        SSAValue(286) = (Core.getfield)((Base.getfield)(shape@_70, 1)::Base.OneTo{Int64}, :stop)::Int64
+        SSAValue(287) = (Core.getfield)((Base.getfield)(shape@_70, 2)::Base.OneTo{Int64}, :stop)::Int64
+        # meta: pop location
+        #temp#@_76 = $(Expr(:foreigncall, :(:jl_alloc_array_2d), Array{Any,2}, svec(Any, Int64, Int64), Array{Any,2}, 0, SSAValue(286), 0, SSAValue(287), 0))
+        goto 617
+        614:  # line 321:
+        #temp#@_76 = $(Expr(:invoke, MethodInstance for broadcast_t(::Function, ::Type{Any}, ::Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}, ::CartesianRange{CartesianIndex{2}}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Array{AbstractFloat,2}, ::Vararg{Array{AbstractFloat,2},N} where N), :(Base.Broadcast.broadcast_t), :(#10), :(Base.Broadcast.Any), :(shape@_70), :(iter@_71), SSAValue(26), SSAValue(27), SSAValue(28)))
+        617: 
+        # meta: pop location
+        # meta: pop location
+        og = #temp#@_76 # line 89:
+        #11 = $(Expr(:new, Recurrent.##11#17{Base.#tanh}, :(Recurrent.tanh)))
+        SSAValue(290) = (Base.sub_int)((Base.add_int)(start, sample_num)::Int64, 1)::Int64
+        SSAValue(291) = $(Expr(:new, UnitRange{Int64}, :(start), :((Base.select_value)((Base.sle_int)(start, SSAValue(290))::Bool, SSAValue(290), (Base.sub_int)(start, 1)::Int64)::Int64)))
+        # meta: location array.jl getindex 555
+        SSAValue(292) = (Core.tuple)(SSAValue(291))::Tuple{UnitRange{Int64}}
+        # meta: location abstractarray.jl checkbounds 362
+        SSAValue(294) = (Core.getfield)(SSAValue(292), 1)::UnitRange{Int64}
+        # meta: location abstractarray.jl checkbounds 347
+        # meta: location abstractarray.jl linearindices 98
+        # meta: location abstractarray.jl _length 132
+        # meta: location abstractarray.jl indices 64
+        SSAValue(298) = (Base.arraysize)(cell_states, 1)::Int64
+        SSAValue(299) = (Base.arraysize)(cell_states, 2)::Int64
+        # meta: pop location
+        SSAValue(304) = (Base.select_value)((Base.slt_int)(SSAValue(298), 0)::Bool, 0, SSAValue(298))::Int64
+        SSAValue(305) = (Base.select_value)((Base.slt_int)(SSAValue(299), 0)::Bool, 0, SSAValue(299))::Int64
+        # meta: pop location
+        # meta: pop location
+        SSAValue(309) = (Base.select_value)((Base.slt_int)((Base.mul_int)(SSAValue(304), SSAValue(305))::Int64, 0)::Bool, 0, (Base.mul_int)(SSAValue(304), SSAValue(305))::Int64)::Int64
+        # meta: location abstractarray.jl checkindex 460
+        SSAValue(308) = (Core.getfield)(SSAValue(294), :start)::Int64
+        SSAValue(307) = (Core.getfield)(SSAValue(294), :stop)::Int64
+        # meta: pop location
+        # meta: pop location
+        SSAValue(293) = (Base.or_int)((Base.slt_int)((Core.getfield)(SSAValue(294), :stop)::Int64, (Core.getfield)(SSAValue(294), :start)::Int64)::Bool, (Base.and_int)((Base.and_int)((Base.sle_int)(1, SSAValue(308))::Bool, (Base.sle_int)(SSAValue(308), SSAValue(309))::Bool)::Bool, (Base.and_int)((Base.sle_int)(1, SSAValue(307))::Bool, (Base.sle_int)(SSAValue(307), SSAValue(309))::Bool)::Bool)::Bool)::Bool
+        unless SSAValue(293) goto 649
+        goto 651
+        649: 
+        $(Expr(:invoke, MethodInstance for throw_boundserror(::Array{AbstractFloat,2}, ::Tuple{UnitRange{Int64}}), :(Base.throw_boundserror), :(cell_states), SSAValue(292)))
+        651: 
+        # meta: pop location # line 556:
+        # meta: location range.jl length 393
+        # meta: location checked.jl checked_sub 221
+        SSAValue(310) = (Base.Checked.checked_ssub_int)((Core.getfield)(SSAValue(291), :stop)::Int64, (Core.getfield)(SSAValue(291), :start)::Int64)::Tuple{Int64,Bool}
+        SSAValue(313) = (Base.getfield)(SSAValue(310), 1)::Int64
+        SSAValue(315) = (Base.getfield)(SSAValue(310), 2)::Bool # line 222:
+        unless SSAValue(315) goto 662
+        (Base.Checked.throw)($(QuoteNode(OverflowError())))::Union{}
+        662: 
+        # meta: pop location
+        # meta: location checked.jl checked_add 164
+        SSAValue(317) = (Base.Checked.checked_sadd_int)(SSAValue(313), 1)::Tuple{Int64,Bool}
+        SSAValue(320) = (Base.getfield)(SSAValue(317), 1)::Int64
+        SSAValue(322) = (Base.getfield)(SSAValue(317), 2)::Bool # line 165:
+        unless SSAValue(322) goto 671
+        (Base.Checked.throw)($(QuoteNode(OverflowError())))::Union{}
+        671: 
+        # meta: pop location
+        # meta: pop location # line 557:
+        X = $(Expr(:foreigncall, :(:jl_alloc_array_1d), Array{AbstractFloat,1}, svec(Any, Int64), Array{AbstractFloat,1}, 0, SSAValue(320), 0)) # line 558:
+        unless (Base.slt_int)(0, SSAValue(320))::Bool goto 680 # line 559:
+        $(Expr(:invoke, MethodInstance for unsafe_copy!(::Array{AbstractFloat,1}, ::Int64, ::Array{AbstractFloat,2}, ::Int64, ::Int64), :(Base.unsafe_copy!), :(X), 1, :(cell_states), :((Core.getfield)(SSAValue(291), :start)::Int64), SSAValue(320)))
+        680: 
+        # meta: pop location
+        # meta: location broadcast.jl broadcast 455
+        SSAValue(325) = (Base.Broadcast.promote_containertype)((Base.Broadcast._containertype)((Base.Broadcast.typeof)(og)::DataType), Array)::Union{Type{Array}, Type{Base.SparseArrays.HigherOrderFns.PromoteToSparse}}
+        # meta: pop location
+        SSAValue(32) = (Base.Broadcast.broadcast_c)(#11, SSAValue(325), og, X)
+        SSAValue(326) = (Base.sub_int)((Base.add_int)(start, sample_num)::Int64, 1)::Int64
+        # meta: location abstractarray.jl setindex! 968
+        # meta: location indices.jl to_indices 213
+        # meta: location abstractarray.jl indices 64
+        (Base.arraysize)(hidden_states, 1)::Int64
+        SSAValue(331) = (Base.arraysize)(hidden_states, 2)::Int64
+        # meta: pop location
+        # meta: location indices.jl to_indices 215
+        # meta: location multidimensional.jl to_indices 469
+        # meta: location multidimensional.jl uncolon 476
+        # meta: location indices.jl Type 233
+        # meta: location indices.jl Type 233
+        # meta: location range.jl convert 764
+        SSAValue(332) = (Base.select_value)((Base.slt_int)(SSAValue(331), 0)::Bool, 0, SSAValue(331))::Int64
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        # meta: pop location
+        (Base._setindex!)($(QuoteNode(IndexLinear())), hidden_states, SSAValue(32), $(Expr(:new, UnitRange{Int64}, :(start), :((Base.select_value)((Base.sle_int)(start, SSAValue(326))::Bool, SSAValue(326), (Base.sub_int)(start, 1)::Int64)::Int64))), $(Expr(:new, Base.Slice{Base.OneTo{Int64}}, :($(Expr(:new, Base.OneTo{Int64}, :((Base.select_value)((Base.slt_int)(SSAValue(332), 0)::Bool, 0, SSAValue(332))::Int64))))))) # line 92:
+        start = (Base.add_int)(start, sample_num)::Int64
+        711: 
+        goto 53
+        713: 
+        # meta: pop location
+        $(Expr(:inbounds, :pop))
+        return (Core.tuple)(cell_states, hidden_states)::Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}
+    end))=>Tuple{Array{AbstractFloat,2},Array{AbstractFloat,2}}

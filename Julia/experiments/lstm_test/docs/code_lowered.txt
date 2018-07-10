@@ -1,0 +1,5 @@
+@code_lowered(LSTM_forward(rand_inputs, lstm_cell, input_dim, hidden_dim, seq_len)) = CodeInfo(:(begin 
+        nothing
+        nothing
+        return (Recurrent.#LSTM_forward#5)(Recurrent.tanh, Recurrent.tanh, (Core.AnyVector)(0), #self#, inputs, lstm_cell, input_dim, hidden_dim, seq_len)
+    end))

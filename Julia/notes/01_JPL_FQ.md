@@ -266,27 +266,6 @@ for "vectorized" (element-wise) functions, the convenient syntax `x .= f.(y)` ca
     ```
 ---
 
-## Metaprogramming
-
-_**Expression**_
-
-Julia represents its own code as a data structure of the language itself.
-
-*  Since code is represented by objects that can be created and manipulated from within the language, it is possible for a program to transform and generate its own code.
-* This allows true Lisp-style macros operating at the level of abstract syntax trees.
-
-1. Every Julia program starts life as a string.
-1. The next step is to parse each string into an object called an expression, represented by the Julia type `Expr`.
- * `Expr` objects contain two parts:
-   1. `Symbol`
-   1. the expression arguments
-
-1. **Julia code is internally represented as a data structure that is accessible from the language itself.**
-1. In the context of an expression, symbols are used to indicate access to variables
-  * when an expression is evaluated, a symbol is replaced with the value bound to that symbol in the appropriate scope.
-
----
-
 ### `:` in Julia
 
 1. Create a [`Symbol`](https://docs.julialang.org/en/v0.6.3/manual/metaprogramming/#Symbols-1), an interned string used as one building-block of expressions.
@@ -295,6 +274,7 @@ Julia represents its own code as a data structure of the language itself.
 ---
 
 ### Type System
+
 * _**Generic types can be parameterized, and the hierarchical relationships between types are explicitly declared, rather than implied by compatible structure**_.
 * _**Concrete types may not subtype each other**_: all concrete types are final, so no implementation is a subtype of any other.
   * all concrete types are final and may **only** have abstract types as their supertypes.
@@ -369,11 +349,3 @@ abstract «name» <: «supertype»
 1. Is the support for serilization well enough？
 1. What is the recommanded program paradigm? a functional language? OOP?
 1. How JIT in Julia benefit deep learning framework?
-
----
-
-## Let's look at some code snippets
-
-```julia
-evalcb = () -> @show loss(Xs[5], Ys[5])
-```

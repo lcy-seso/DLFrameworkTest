@@ -26,6 +26,4 @@ function softmax(m::Param)
   return out
 end
 
-function sigmoid(x)
-  1.0 ./ (1.0 .+ exp.(-x))
-end
+ σ(x) = 1.0 / (1.0 + exp(-x))
