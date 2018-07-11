@@ -1,6 +1,4 @@
 #!/usr/bin/env julia
-using Random
-
 include("Recurrent/recurrent.jl")
 using .Recurrent
 
