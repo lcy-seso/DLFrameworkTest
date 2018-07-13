@@ -36,8 +36,8 @@ C API `TF_NewSession` uses the [factory method pattern](https://en.wikipedia.org
 
 ### [DirectSession::Run](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/common_runtime/direct_session.cc#L645)
 
-* Call ExecutorState::RynAsynch, which initializes the TensorFlow ready queue with the roots nodes.
-* ExecutorState::Process, which executes the operation.
+* Call `ExecutorState::RunAsync`, which executes a mini-batch computation.
+* `ExecutorState::Process`, which executes the operation.
 * [DirectSession::GetOrCreateExecutors](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/common_runtime/direct_session.cc#L1255)
   * [DirectSession::CreateGraphs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/common_runtime/direct_session.cc#L1362)
   * Create _**several graphs**_ given the existing `GraphDef` and the input feeds and fetches
@@ -99,7 +99,7 @@ There is a very important function `ScheduleReady`, let's first summarize its be
 - Partition graphs across devices.
 - One executor is created for each partitioned graph.
 - All the executors share a global pool thread.
-  - When Tensorflow directly uses `DirectSession`, it uses Eigen's ThreadPool.
+  - When Tensorflow uses `DirectSession`, it directly uses Eigen's ThreadPool.
   - Threads in the thread pool are scheduled by [`Eigen` implementation](https://github.com/ROCmSoftwarePlatform/eigen-upstream/blob/master/unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h#L20). TensorFlow does not schedule the threads itself.
   - The Eigen ThreadPpool that TF used is using this queue implementation: [RunQueue](https://eigen.tuxfamily.org/dox/unsupported/RunQueue_8h_source.html). There is one queue per thread.
 - Each executor runs operators in its sub-graphs "one by one":
@@ -112,3 +112,7 @@ There is a very important function `ScheduleReady`, let's first summarize its be
           * *If all the kernels in the thread pool are  synchronous, the current thread will execute the last one instead of dispatching it*.
         * Synchronous kernels (all CPU kernels) will be devided into two parts: expensive kernels and inexpensive kernels.
           * the current thread will execute one expensive kernel or all the inexpensive kernels.
+
+<p align="center">
+<img src="images/02_op_scheduling.png" width=1000><br/>
+</p>
