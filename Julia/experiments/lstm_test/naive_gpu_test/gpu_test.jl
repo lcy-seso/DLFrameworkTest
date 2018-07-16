@@ -15,11 +15,7 @@ rand_inputs_d = CuArray(randn(batch_size * seq_len, input_dim))
 lstm_cell = LSTMCell(input_dim, hidden_dim)
 
 
-for i = 1 : 100
-  if i % 10 == 0
-    println(i)
-  end
-
+for i = 1 : 10
   cell_states, hidden_states = lstm_forward(rand_inputs_d, lstm_cell, seq_len)
 
   # println("cell states : ")
