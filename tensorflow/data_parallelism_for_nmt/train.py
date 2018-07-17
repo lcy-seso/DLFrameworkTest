@@ -12,7 +12,7 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-SINGLE_CARD_SPEED = 39368.756
+SINGLE_CARD_SPEED = 51751.293
 
 
 def make_config():
@@ -25,8 +25,8 @@ def make_config():
     config.intra_op_parallelism_threads = 0
     config.inter_op_parallelism_threads = 56
 
-    config.graph_options.build_cost_model_after = 5
-    config.graph_options.build_cost_model = 5
+    # config.graph_options.build_cost_model_after = 5
+    # config.graph_options.build_cost_model = 5
     return config
 
 

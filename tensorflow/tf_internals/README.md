@@ -1,0 +1,3 @@
+- [Some resources](useful_resources.md)
+- [How operators are scheduled ?](How_TensorFlow_Schedules_Operators.pdf)
+  - [note](op_scheduling.md)
