@@ -12,7 +12,7 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-SINGLE_CARD_SPEED = 39368.756
+SINGLE_CARD_SPEED = 50967.762
 
 
 def make_config():
@@ -25,12 +25,12 @@ def make_config():
     config.intra_op_parallelism_threads = 0
     config.inter_op_parallelism_threads = 56
 
-    config.graph_options.build_cost_model_after = 5
-    config.graph_options.build_cost_model = 5
+    # config.graph_options.build_cost_model_after = 5
+    # config.graph_options.build_cost_model = 5
     return config
 
 
-def profiling_train(model, config):
+def profiling_train(model, config, hparams):
 
     builder = tf.profiler.ProfileOptionBuilder
     opts = builder(builder.time_and_memory()).order_by("micros").build()
@@ -42,7 +42,7 @@ def profiling_train(model, config):
     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
     with tf.contrib.tfprof.ProfileContext(
-            "profiling_%02d_cards" % (model.num_gpus),
+            "%02d_cards" % (model.num_gpus),
             trace_steps=[],
             dump_steps=[]) as pctx:
 
@@ -66,7 +66,8 @@ def profiling_train(model, config):
             start_time = time.time()
             total_word_count = 0
 
-            sess.run(model.iterator.initializer)
+            if not hparams.use_synthetic_data:
+                sess.run(model.iterator.initializer)
 
             while True:
                 try:
@@ -88,7 +89,8 @@ def profiling_train(model, config):
                     if batch_id == 3: break
 
                 except tf.errors.OutOfRangeError:
-                    sess.run(iterator.initializer)
+                    if not hparams.use_synthetic_data:
+                        sess.run(iterator.initializer)
                     batch_id = 0
                     continue
 
@@ -161,7 +163,7 @@ def main(unused_argv):
     config = make_config()
 
     if hparams.enable_profile:
-        profiling_train(model, config)
+        profiling_train(model, config, hparams),
     else:
         train(model, config, hparams)
 
