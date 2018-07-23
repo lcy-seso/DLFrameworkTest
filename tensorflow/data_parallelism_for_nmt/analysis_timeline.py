@@ -10,7 +10,7 @@ from collections import OrderedDict
 import pdb
 
 import tensorflow as tf
-from seq2seq_model import Seq2SeqModel, hparams
+from seq2seq_model import Seq2SeqModel
 
 
 def get_filename(path):
@@ -282,6 +282,67 @@ def analysis_timeline(log_file, op_info_file, tower_num):
             fout.write("\n")
 
 
+def profile_host(log_filename, save_dir="timeline_info"):
+    device_num = int(os.path.split(log_filename)[-1].split("_")[0])
+
+    info = defaultdict(list)
+    pid_info = {}
+
+    with open(log_filename, "r") as flog:
+        events = json.load(flog)["traceEvents"]
+
+        for event in events:
+            if "name" not in event: continue
+            if "args" not in event: continue
+            if "name" not in event["args"]: continue
+
+            name = event["args"]["name"]
+            if event["name"] == "process_name":
+                if ("Op scheduling threads" in name or
+                        "Op execution threads" in name):
+                    splits = name.split("/")
+                    device_name = splits[-1]
+
+                    if "scheduling" in splits[0]: device_name += "_scheduling"
+                    elif "execution" in splits[0]: device_name += "_execution"
+
+                    pid_info[str(event["pid"])] = device_name
+                    print("%d\t%s" % (event["pid"], device_name))
+                    continue
+
+            if "ts" not in event: continue
+            if str(event["pid"]) not in pid_info: continue
+
+            info[name].append({
+                "ts": event["ts"] / 1000.,
+                "pid": str(event["pid"]),
+                "dur": event["dur"],
+                "name": event["name"],
+            })
+
+    formated_info = {}
+    for k, v in info.iteritems():
+        for item in v:
+            device_name = pid_info[item["pid"]]
+            formated_info[k] = [item["ts"], device_name, item["dur"]]
+
+    sorted_info = sorted(
+        formated_info.iteritems(), key=lambda x: x[1][0], reverse=False)
+
+    with open(os.path.join(save_dir, "ops_%d_cards.txt" % (device_num)),
+              "w") as fout:
+        ts_base = sorted_info[0][1][0]
+        for v in sorted_info:
+            fout.write("%s\t%.3f\t%s\t%d\n" % (v[0], v[1][0] - ts_base,
+                                               v[1][1], v[1][2]))
+
+
 if __name__ == "__main__":
-    analyse_ts(sys.argv[1], int(sys.argv[2]), save_dir="log_files")
+    # analyse_ts(sys.argv[1], int(sys.argv[2]), save_dir="log_files")
     #     "timeline_log/2_cards.json", tower_num=2, save_dir="profiling_log")
+
+    log_dir = "timeline_info/json"
+    for f in os.listdir(log_dir):
+        print("processing %s" % (f))
+        file_path = os.path.join(log_dir, f)
+        profile_host(file_path)

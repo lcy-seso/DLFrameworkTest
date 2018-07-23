@@ -45,7 +45,8 @@ def profiling_train(model, config, hparams):
     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
     with tf.contrib.tfprof.ProfileContext(
-            "%02d_cards" % (model.num_gpus), trace_steps=[],
+            os.path.join("timeline_info", "%02d_cards" % (model.num_gpus)),
+            trace_steps=[],
             dump_steps=[]) as pctx:
 
         sv = tf.train.Supervisor(
@@ -73,7 +74,7 @@ def profiling_train(model, config, hparams):
 
             while True:
                 try:
-                    if batch_id == 2:
+                    if batch_id == 4:
                         pctx.trace_next_step()
                         pctx.dump_next_step()
 
@@ -88,7 +89,16 @@ def profiling_train(model, config, hparams):
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
                                                               batch_id, loss))
                     batch_id += 1
-                    if batch_id == 3: break
+                    print("batch_id = %d" % batch_id)
+                    if batch_id == 5:
+                        fetched_timeline = timeline.Timeline(
+                            run_metadata.step_stats)
+                        chrome_trace = \
+                                fetched_timeline.generate_chrome_trace_format()
+                        with open("%02d_cards.json" % (model.num_gpus),
+                                  "w") as f:
+                            f.write(chrome_trace)
+                        return
 
                 except tf.errors.OutOfRangeError:
                     if not hparams.use_synthetic_data:
