@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #coding=utf-8
+
 from __future__ import division
+
+import os
 import sys
 import argparse
 import time
@@ -30,7 +33,7 @@ def make_config():
     return config
 
 
-def profiling_train(model, config):
+def profiling_train(model, config, hparams):
 
     builder = tf.profiler.ProfileOptionBuilder
     opts = builder(builder.time_and_memory()).order_by("micros").build()
@@ -42,8 +45,7 @@ def profiling_train(model, config):
     options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
     with tf.contrib.tfprof.ProfileContext(
-            "profiling_%02d_cards" % (model.num_gpus),
-            trace_steps=[],
+            "%02d_cards" % (model.num_gpus), trace_steps=[],
             dump_steps=[]) as pctx:
 
         sv = tf.train.Supervisor(
@@ -66,7 +68,8 @@ def profiling_train(model, config):
             start_time = time.time()
             total_word_count = 0
 
-            sess.run(model.iterator.initializer)
+            if not hparams.use_synthetic_data:
+                sess.run(model.iterator.initializer)
 
             while True:
                 try:
@@ -88,7 +91,8 @@ def profiling_train(model, config):
                     if batch_id == 3: break
 
                 except tf.errors.OutOfRangeError:
-                    sess.run(iterator.initializer)
+                    if not hparams.use_synthetic_data:
+                        sess.run(iterator.initializer)
                     batch_id = 0
                     continue
 
@@ -107,7 +111,10 @@ def train(model, config, hparams):
     with sv.managed_session(
             master="", config=config, start_standard_services=False) as sess:
 
-        writer = tf.summary.FileWriter("tb_log", sess.graph)
+        tb_log_dir = "tblog"
+        if os.path.exists(tb_log_dir): shutil.rmtree(tb_log_dir)
+        else: os.mkdir(tb_log_dir)
+        writer = tf.summary.FileWriter(tb_log_dir, sess.graph)
 
         pass_id = 0
         batch_id = 0
@@ -161,7 +168,7 @@ def main(unused_argv):
     config = make_config()
 
     if hparams.enable_profile:
-        profiling_train(model, config)
+        profiling_train(model, config, hparams),
     else:
         train(model, config, hparams)
 
