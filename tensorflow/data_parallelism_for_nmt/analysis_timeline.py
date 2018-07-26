@@ -5,12 +5,14 @@ from __future__ import division
 import os
 import sys
 import json
+import re
+import pdb
+import shutil
 from collections import defaultdict
 from collections import OrderedDict
-import pdb
 
 import tensorflow as tf
-from seq2seq_model import Seq2SeqModel, hparams
+from seq2seq_model import Seq2SeqModel
 
 
 def get_filename(path):
@@ -186,14 +188,14 @@ def analyse_ts(log_file, tower_num, save_dir):
         merge_grad = 0.
 
     update = (opts[-1] - opts[0]) / 1000.
-    computate = (bw_end - fw_start) / 1000.
-    total_time = merge_grad + update + computate
+    compute = (bw_end - fw_start) / 1000.
+    total_time = merge_grad + update + compute
 
     print(("|computation (ms)|merge gradients (ms) |update (ms)|total(ms)|\n"
            "|:--|:--|:--|:--|"))
     print("|%.3f(%.4f)|%.3f(%.4f)|%.3f(%.4f)|%.3f(1.0)|" %
-          (computate, computate / total_time, merge_grad,
-           merge_grad / total_time, update, update / total_time, total_time))
+          (compute, compute / total_time, merge_grad, merge_grad / total_time,
+           update, update / total_time, total_time))
 
 
 def analysis_timeline(log_file, op_info_file, tower_num):
@@ -282,6 +284,234 @@ def analysis_timeline(log_file, op_info_file, tower_num):
             fout.write("\n")
 
 
+def profile_host(log_filename, save_dir="timeline_info/formated"):
+    device_num = int(os.path.split(log_filename)[-1].split("_")[0])
+    pid_info = {}
+    info = []
+
+    with open(log_filename, "r") as flog:
+        events = json.load(flog)["traceEvents"]
+
+        for event in events:
+            if "name" not in event: continue
+            if "args" not in event: continue
+            if "name" not in event["args"]: continue
+
+            name = event["args"]["name"]
+            if event["name"] == "process_name":
+                if ("Op scheduling threads" in name or
+                        "Op execution threads" in name):
+                    splits = name.split("/")
+                    device_name = splits[-1]
+
+                    if "scheduling" in splits[0]: device_name += "_scheduling"
+                    elif "execution" in splits[0]: device_name += "_execution"
+
+                    pid_info[str(event["pid"])] = device_name
+                    print("%d\t%s" % (event["pid"], device_name))
+                    continue
+
+            if "ts" not in event: continue
+            if str(event["pid"]) not in pid_info: continue
+
+            info.append({
+                "ts": event["ts"] / 1000.,
+                "pid": str(event["pid"]),
+                "dur": event["dur"] / 1000.,
+                "name": event["name"],
+            })
+
+    sorted_info = sorted(info, key=lambda x: x["ts"], reverse=False)
+
+    with open(
+            os.path.join(save_dir, "ops_%02d_cards.txt" % (device_num)),
+            "w") as fout:
+        ts_base = sorted_info[0]["ts"]
+        for v in sorted_info:
+            fout.write("%s\t%.3f\t%s\t%.3f\t%s\n" %
+                       (v["name"], v["ts"] - ts_base, pid_info[v["pid"]],
+                        v["dur"], v["pid"]))
+
+
+def gen_readable_log(file_path, gpu_num,
+                     save_dir="timeline_info/readable_log"):
+    def __process_op_name(event_name):
+        op_name = event_name
+
+        name_splits = op_name.split("/")
+        prefix = re.sub(ur"_[\d]+", "", name_splits[0])
+        prefix = re.sub(ur"_v[\d]+", "", prefix)
+        op_name = prefix + (("/" + "/".join(name_splits[1:]))
+                            if len(name_splits) > 1 else "")
+
+        # strip Adam/update prefix
+        op_name = re.sub(ur"/update_v\d/", "/", op_name, count=1)
+        op_name = re.sub(ur"v\d/", "", op_name, count=1)
+        op_name = re.sub(ur"/v\d/", "/", op_name, count=1)
+        op_name = re.sub(ur"tower_\d/", "", op_name)
+
+        if "swap_out" in op_name or "swap_in" in op_name:
+            op_name = re.sub(ur"_\d", "", op_name)
+
+        return op_name
+
+    def __get_device_name(event_name):
+        name_splits = event_name.split("/")
+        if len(name_splits) == 1: return None
+
+        if "Adam" in name_splits[0]:
+            splits = name_splits[0].split("_")
+            if len(splits) == 1: return 0
+            else: return int(splits[-1])
+
+        if name_splits[0].startswith("v"):
+            return int(name_splits[0].replace("v", ""))
+
+    cpu_ops = {}
+    scheduling_ops = {}
+    compute_ops = {}
+
+    ops_on_device = {}
+    schduling_ops = {}
+    with open(file_path, "r") as fin:
+        for line in fin:
+            event_name, ts, device_name, dur, pid = line.strip().split()
+            device, thread_name = device_name.split("_")
+            if thread_name == "scheduling":
+                ops_on_device[event_name] = device_name
+
+    with open(file_path, "r") as fin:
+        for line in fin:
+            event_name, ts, device_name, dur, pid = line.strip().split()
+            device, thread_name = device_name.split("_")
+            device_info = device.split(":")
+            op_name = __process_op_name(event_name)
+
+            if device_info[1] == "cpu":
+                cpu_ops[op_name] = {"ts": ts, "dur": dur}
+                continue
+
+            if thread_name == "scheduling":
+                if op_name not in scheduling_ops:
+                    scheduling_ops[op_name] = {}
+                    for i in range(gpu_num):
+                        scheduling_ops[op_name]["gpu%d" % i] = {
+                            "ts": -1.,
+                            "dur": -1,
+                        }
+
+                scheduling_ops[op_name]["gpu" +
+                                        device_info[-1]]["ts"] = float(ts)
+                scheduling_ops[op_name]["gpu" +
+                                        device_info[-1]]["dur"] = int(dur)
+
+            else:
+                if op_name not in compute_ops:
+                    compute_ops[op_name] = {}
+                    for i in range(gpu_num):
+                        compute_ops[op_name]["gpu%d" % i] = {
+                            "ts": -1.,
+                            "dur": -1,
+                        }
+
+                device_num = __get_device_name(event_name)
+                if device_num is None: continue
+
+                compute_ops[op_name]["gpu%d" % (device_num)]["ts"] = float(ts)
+                compute_ops[op_name]["gpu%d" % (device_num)]["dur"] = int(dur)
+
+    with open(os.path.join(save_dir, "ops_%02d.txt" % (gpu_num)), "w") as fout:
+        fout.write("process name\top name\tevent_name")
+        for i in range(gpu_num):
+            fout.write("\tgpu:%d ts \tdur" % (i))
+        fout.write("\n")
+
+        for op in compute_ops:
+            fout.write("compute\t%s" % (op))
+            for i in range(gpu_num):
+                fout.write("\t%.3f\t%d" %
+                           (compute_ops[op]["gpu%d" % i]["ts"],
+                            compute_ops[op]["gpu%d" % i]["dur"]))
+            fout.write("\n")
+
+        for op in scheduling_ops:
+            fout.write("scheduling\t%s" % (op))
+            for i in range(gpu_num):
+                fout.write("\t%.3f\t%d" %
+                           (scheduling_ops[op]["gpu%d" % i]["ts"],
+                            scheduling_ops[op]["gpu%d" % i]["dur"]))
+            fout.write("\n")
+
+
+def format_log(log_dir, save_path):
+    assert os.path.exists(log_dir), "input directory does not exits."
+
+    if os.path.exists(save_path): os.remove(save_path)
+
+    from openpyxl import Workbook
+    res_file = Workbook()
+
+    file_list = os.listdir(log_dir)
+    file_list.sort()
+    for i, f in enumerate(file_list):
+        print("processing %s" % (f))
+
+        gpu_num = int(f.split("_")[1])
+        res_sheet = res_file.create_sheet(str(i))
+        res_sheet.title = ("%02d GPU cards" % (gpu_num)).decode("utf-8")
+
+        idx = 1
+        res_sheet["A%d" % idx] = u"process name"
+        res_sheet["B%d" % idx] = u"event name"
+        res_sheet["C%d" % idx] = u"time stamp"
+        res_sheet["D%d" % idx] = u"duration"
+        res_sheet["E%d" % idx] = u"end time stamp"
+
+        data = []
+        with open(os.path.join(log_dir, f), "r") as fin:
+            for line in fin:
+                splits = line.strip().split()
+                data.append(splits)
+        """
+        item[0]: event name
+        item[1]: start ts
+        item[2]: device info
+        item[3]: duration
+        item[4]: pid
+        """
+        sorted_data = sorted(
+            data, key=lambda x: float(x[1]) + float(x[3]), reverse=False)
+
+        for idx, item in enumerate(sorted_data):
+            event_name, ts, dur = item[0], item[1], item[3]
+            device, process_name = item[2].split("_")
+            device = device.replace("device:", "")
+
+            res_sheet["A%d" % (idx + 2)] = process_name.decode("utf-8")
+            res_sheet["B%d" % (idx + 2)] = event_name.decode("utf-8")
+            res_sheet["C%d" % (idx + 2)] = ts.decode("utf-8")
+            res_sheet["D%d" % (idx + 2)] = dur.decode("utf-8")
+            res_sheet["E%d" % (idx + 2)] = float(ts) + float(dur)
+
+    res_file.save(save_path)
+
+
+def process():
+    # log_dir = "timeline_info/dynamic_rnn/json"
+    # save_dir = "timeline_info/dynamic_rnn/formated"
+
+    log_dir = "timeline_info/cudnn_lstm/json"
+    save_dir = "timeline_info/cudnn_lstm/formated"
+    for f in os.listdir(log_dir):
+        print("processing %s" % (f))
+        file_path = os.path.join(log_dir, f)
+        profile_host(file_path, save_dir=save_dir)
+
+    log_dir = save_dir
+    # save_path = "dynamic_rnn_ops.xlsx"
+    save_path = "cudnn_rnn_ops.xlsx"
+    format_log(log_dir=log_dir, save_path=save_path)
+
+
 if __name__ == "__main__":
-    analyse_ts(sys.argv[1], int(sys.argv[2]), save_dir="log_files")
-    #     "timeline_log/2_cards.json", tower_num=2, save_dir="profiling_log")
+    process()

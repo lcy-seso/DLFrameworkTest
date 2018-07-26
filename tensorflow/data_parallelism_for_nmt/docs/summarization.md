@@ -9,7 +9,7 @@ Usually the following factors are ensential to time performance:
 3. *Communication*
 4. *I/O pipline*
 5. *synchronization SGD is used, balance of computation workload* (may harm learning performance)
-6. _**OP scheduling**_ to hide latency
+6. *[OP scheduling to hide latency](../tf_internals/How_TensorFlow_Schedule_Operators.pdf)*
 
 ---
 
