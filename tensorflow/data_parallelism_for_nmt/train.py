@@ -7,6 +7,7 @@ import os
 import sys
 import argparse
 import time
+import shutil
 import pdb
 
 import tensorflow as tf
@@ -15,7 +16,8 @@ from tensorflow.python.client import timeline
 from seq2seq_model import Seq2SeqModel
 from utils import get_available_gpus, add_arguments, create_hparams
 
-SINGLE_CARD_SPEED = 51751.293
+SINGLE_CARD_SPEED = None
+WARM_UP_BATCH = 10
 
 
 def make_config():
@@ -28,8 +30,6 @@ def make_config():
     config.intra_op_parallelism_threads = 0
     config.inter_op_parallelism_threads = 56
 
-    # config.graph_options.build_cost_model_after = 5
-    # config.graph_options.build_cost_model = 5
     return config
 
 
@@ -95,8 +95,8 @@ def profiling_train(model, config, hparams):
                             run_metadata.step_stats)
                         chrome_trace = \
                                 fetched_timeline.generate_chrome_trace_format()
-                        with open("%02d_cards.json" % (model.num_gpus),
-                                  "w") as f:
+                        with open("timeline_info/%02d_cards.json" %
+                                  (model.num_gpus), "w") as f:
                             f.write(chrome_trace)
                         return
 
@@ -129,8 +129,8 @@ def train(model, config, hparams):
         pass_id = 0
         batch_id = 0
 
-        start_time = time.time()
         total_word_count = 0
+        start_time = None
 
         if not hparams.use_synthetic_data:
             sess.run(model.iterator.initializer)
@@ -140,14 +140,17 @@ def train(model, config, hparams):
                 _, loss, word_count = sess.run(
                     list(model.fetches.values()) + [model.word_count])
 
-                total_word_count += word_count
+                if batch_id == WARM_UP_BATCH:
+                    start_time = time.time()
+                total_word_count += (word_count
+                                     if batch_id >= WARM_UP_BATCH else 0)
 
                 if batch_id and not batch_id % 5:
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
                                                               batch_id, loss))
                 batch_id += 1
 
-                if batch_id == 20:
+                if batch_id == 30:
                     print("Pass %d, Batch %d, Loss : %.5f" % (pass_id,
                                                               batch_id, loss))
                     time_elapsed = time.time() - start_time
