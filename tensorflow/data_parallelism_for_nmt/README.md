@@ -16,3 +16,4 @@
 - [**important**] [MKL with default setting of `inter_op_parallelism_threads`](docs/inter_op_parallelism_threads_with_MKL.md)
 - [Optimized I/O pipline: prefetch to device](docs/optimized_io_pipline.md)
 - [Summarize experimental results up to now](docs/summarization.md)
+- [Fix the warm-up problem](docs/fix_the_warmup_problem.md)
