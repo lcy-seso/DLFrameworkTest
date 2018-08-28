@@ -1,20 +1,23 @@
 #include "reduction_kernel.h"
-#include "reduction_ops.h"
 
 int main(int argc, char* argv[]) {
-  std::vector<size_t> kTensorShape = {23, 13, 11};
-  size_t product = std::accumulate(kTensorShape.begin(), kTensorShape.end(), 1,
-                                   std::multiplies<size_t>());
-  printf("reduce %d numbers.\n", static_cast<int>(product));
+  std::vector<int> kTensorShape = {5, 17, 11};
+  std::vector<int> axes = {1};
+  int out_rank = 0;
+
+  int product = std::accumulate(kTensorShape.begin(), kTensorShape.end(), 1,
+                                std::multiplies<int>());
+  printf("reduce %d numbers.\n", product);
 
   const int kMaxThreads = 512;
   const int kMaxBlocks = 64;
 
   srand(0);
-
   float *h_a, *h_b;
 
   cudaMallocHost((void**)&h_a, sizeof(float) * product);
+  // TODO(ying) The current output size is the same as the input which is not
+  // correct.
   cudaMallocHost((void**)&h_b, sizeof(float) * product);
 
   // random initialization of matrix A.
@@ -40,13 +43,12 @@ int main(int argc, char* argv[]) {
   cudaEventRecord(start);
 
   // lanuch kernel.
-  int numBlocks = 0;
-  int numThreads = 0;
-  getNumBlocksAndThreads(product, kMaxBlocks, kMaxThreads, numBlocks,
-                         numThreads);
-  printf("numThreads = %d, numBlocks = %d\n", numThreads, numBlocks);
-
-  reduceToScalar(numThreads, numBlocks, product, d_a, d_b);
+  int in_dim0 = kTensorShape[0];
+  int in_dim1 = kTensorShape.size() > 1 ? kTensorShape[1] : 1;
+  int in_dim2 = kTensorShape.size() > 2 ? kTensorShape[2] : 1;
+  ReduceImpl<float, Sum<float>>(d_a, d_b, axes, kTensorShape.size(), in_dim0,
+                                in_dim1, in_dim2, out_rank, Sum<float>(),
+                                kMaxThreads, kMaxBlocks);
 
   cudaEventRecord(stop);
   CHECK(cudaEventSynchronize(stop));
