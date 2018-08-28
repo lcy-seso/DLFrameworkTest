@@ -1,12 +1,12 @@
 #include "reduction_kernel.h"
 
 int main(int argc, char* argv[]) {
-  std::vector<int> kTensorShape = {5, 17, 11};
+  std::vector<int> kTensorShape = {13, 33, 11};
   std::vector<int> axes = {1};
   int out_rank = 0;
 
   int product = std::accumulate(kTensorShape.begin(), kTensorShape.end(), 1,
-                                std::multiplies<int>());
+      std::multiplies<int>());
   printf("reduce %d numbers.\n", product);
 
   const int kMaxThreads = 512;
@@ -46,9 +46,12 @@ int main(int argc, char* argv[]) {
   int in_dim0 = kTensorShape[0];
   int in_dim1 = kTensorShape.size() > 1 ? kTensorShape[1] : 1;
   int in_dim2 = kTensorShape.size() > 2 ? kTensorShape[2] : 1;
-  ReduceImpl<float, Sum<float>>(d_a, d_b, axes, kTensorShape.size(), in_dim0,
-                                in_dim1, in_dim2, out_rank, Sum<float>(),
-                                kMaxThreads, kMaxBlocks);
+  // ReduceImpl<float, Sum<float>>(d_a, d_b, axes, kTensorShape.size(), in_dim0,
+  //                               in_dim1, in_dim2, out_rank, Sum<float>(),
+  //                               kMaxThreads, kMaxBlocks);
+  ReduceImpl<float, Max<float>>(d_a, d_b, axes, kTensorShape.size(), in_dim0,
+      in_dim1, in_dim2, out_rank, Max<float>(),
+      kMaxThreads, kMaxBlocks);
 
   cudaEventRecord(stop);
   CHECK(cudaEventSynchronize(stop));

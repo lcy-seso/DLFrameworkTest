@@ -23,11 +23,16 @@
   mask = __ballot_sync(FULL_WARP_MASK, (predicate))
 #endif
 
-__device__ unsigned int count = 0;
+__device__ unsigned int mutex;
+__device__ void lock(void) {
+  while (atomicCAS(&mutex, 0U, 1U) != 0U)
+    ;
+}
+__device__ void unlock(void) { atomicExch(&mutex, 0U); }
 
-inline bool isPow2(unsigned int x) { return ((x & (x - 1)) == 0); }
+__host__ inline bool isPow2(unsigned int x) { return ((x & (x - 1)) == 0); }
 
-inline unsigned int nextPow2(unsigned int x) {
+__host__ inline unsigned int nextPow2(unsigned int x) {
   --x;
   x |= x >> 1;
   x |= x >> 2;
@@ -101,6 +106,7 @@ __device__ void blockReduce(unsigned int numElements, bool nIsPow2, const T* I,
   __syncthreads();
 
   val = power2Reduce(val, tid, shm, reducer, blockSize);
+
   if (tid == 0) O[0] = val;
 }
 
@@ -108,12 +114,14 @@ template <typename T, typename Reducer>
 __global__ void multiBlockReduce(unsigned int numElements, bool nIsPow2,
                                  const T* I, T* O, Reducer reducer,
                                  int blockSize) {
-  __shared__ float partialSum;
+  __shared__ T partialSum;
   blockReduce(numElements, nIsPow2, I, &partialSum, reducer, blockSize);
+
   if (threadIdx.x == 0) {
-    // TODO(Ying) Current implementation only hard code for sum reduce. Need
-    // re-implementation.
-    atomicAdd(O, partialSum);
+    // TODO(Ying): Use atomic lock may not be optimal.
+    lock();
+    O[0] = reducer(O[0], partialSum);
+    unlock();
   }
 }
 
@@ -132,7 +140,7 @@ void columnReduction(const T* I, T* O, int width, int height, Reducer reducer,
   int threads =
       (width * height < maxThreads * 2) ? nextPow2(height / 2) : maxThreads;
   int blocks = width;
-  // This kernel is ONLY for reduce a 2-D matrix along row.
+  // This kernel is ONLY for reduce a 2-D matrix along column.
 }
 
 template <typename T, typename Reducer>
@@ -142,6 +150,7 @@ void reduceToScalar(const T* I, T* O, int numElements, Reducer reducer,
       (numElements < maxThreads * 2) ? nextPow2(numElements / 2) : maxThreads;
   int blocks = std::max(1, numElements / (threads * 2));
   blocks = min(maxBlocks, blocks);
+  printf("threads = %d, blocks = %d\n", threads, blocks);
 
   dim3 dimBlock(threads, 1, 1);
   dim3 dimGrid(blocks, 1, 1);
