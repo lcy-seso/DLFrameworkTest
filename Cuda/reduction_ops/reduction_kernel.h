@@ -1,10 +1,6 @@
 #ifndef _REDUCE_KERNEL_H_
 #define _REDUCE_KERNEL_H_
 
-#include <algorithm>
-#include <stdexcept>
-#include "stdio.h"
-
 #define CHECK(call)                                                        \
   {                                                                        \
     const cudaError_t error = call;                                        \
@@ -23,140 +19,16 @@
   mask = __ballot_sync(FULL_WARP_MASK, (predicate))
 #endif
 
-__device__ unsigned int mutex;
-__device__ void lock(void) {
+namespace {
+__device__ unsigned int mutex = 0U;
+__device__ unsigned int count = 0U;
+__device__ void Lock() {
+  // NOTE: DO NOT call this funcion in multiple threads. Performance can degrade
+  // or cause deadlock when many threads attempt to perform atomic operations.
   while (atomicCAS(&mutex, 0U, 1U) != 0U)
     ;
 }
-__device__ void unlock(void) { atomicExch(&mutex, 0U); }
-
-__host__ inline bool isPow2(unsigned int x) { return ((x & (x - 1)) == 0); }
-
-__host__ inline unsigned int nextPow2(unsigned int x) {
-  --x;
-  x |= x >> 1;
-  x |= x >> 2;
-  x |= x >> 4;
-  x |= x >> 8;
-  x |= x >> 16;
-  return ++x;
-}
-
-template <typename T>
-__forceinline__ __device__ float CudaShuffleDownSync(unsigned mask, T val,
-                                                     int delta,
-                                                     int width = 32) {
-#if CUDA_VERSION < 9000
-  return __shfl_down(val, delta, width);
-#else
-  return __shfl_down_sync(mask, val, delta, width);
-#endif
-}
-
-template <typename T, typename Reducer>
-__device__ float power2Reduce(T val, int tid, T* shm, Reducer reducer,
-                              int blockSize) {
-  // This kernel function only works for power-of-2 arrays.
-  unsigned mask = 0u;
-  CREATE_SHFL_MASK(mask, tid < blockSize);
-
-  val = reducer(val, CudaShuffleDownSync(mask, val, 16));
-  val = reducer(val, CudaShuffleDownSync(mask, val, 8));
-  val = reducer(val, CudaShuffleDownSync(mask, val, 4));
-  val = reducer(val, CudaShuffleDownSync(mask, val, 2));
-  val = reducer(val, CudaShuffleDownSync(mask, val, 1));
-
-  if (tid < warpSize) shm[tid] = 0.;
-  __syncthreads();
-
-  if (tid % warpSize == 0) shm[tid / warpSize] = val;
-  __syncthreads();
-
-  CREATE_SHFL_MASK(mask, tid < warpSize);
-  if (tid < warpSize) {
-    val = shm[tid];
-    val = reducer(val, CudaShuffleDownSync(mask, val, 16));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 8));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 4));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 2));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 1));
-  }
-  return val;
-}
-
-template <typename T, typename Reducer>
-__device__ void blockReduce(unsigned int numElements, bool nIsPow2, const T* I,
-                            T* O, Reducer reducer, int blockSize) {
-  // This reduction kernel reduces all inputs with an arbitrary size in shared
-  // memory.
-  const int warpSize = 32;
-  __shared__ T shm[warpSize];
-
-  unsigned int tid = threadIdx.x;
-  unsigned int i = blockIdx.x * (blockSize * 2) + threadIdx.x;
-  unsigned int gridSize = blockSize * 2 * gridDim.x;
-
-  T val = 0.;
-  while (i < numElements) {
-    val = reducer(val, I[i]);
-    if (nIsPow2 || i + blockSize < numElements)
-      val = reducer(val, I[i + blockSize]);
-    i += gridSize;
-  }
-  __syncthreads();
-
-  val = power2Reduce(val, tid, shm, reducer, blockSize);
-
-  if (tid == 0) O[0] = val;
-}
-
-template <typename T, typename Reducer>
-__global__ void multiBlockReduce(unsigned int numElements, bool nIsPow2,
-                                 const T* I, T* O, Reducer reducer,
-                                 int blockSize) {
-  __shared__ T partialSum;
-  blockReduce(numElements, nIsPow2, I, &partialSum, reducer, blockSize);
-
-  if (threadIdx.x == 0) {
-    // TODO(Ying): Use atomic lock may not be optimal.
-    lock();
-    O[0] = reducer(O[0], partialSum);
-    unlock();
-  }
-}
-
-template <typename T, typename Reducer>
-void rowReduction(const T* I, T* O, int width, int height, Reducer reducer,
-                  int maxThreads) {
-  // This kernel is ONLY for reduce a 2-D matrix along row.
-  int threads =
-      (width * height < maxThreads * 2) ? nextPow2(width / 2) : maxThreads;
-  int blocks = height;
-}
-
-template <typename T, typename Reducer>
-void columnReduction(const T* I, T* O, int width, int height, Reducer reducer,
-                     int maxThreads) {
-  int threads =
-      (width * height < maxThreads * 2) ? nextPow2(height / 2) : maxThreads;
-  int blocks = width;
-  // This kernel is ONLY for reduce a 2-D matrix along column.
-}
-
-template <typename T, typename Reducer>
-void reduceToScalar(const T* I, T* O, int numElements, Reducer reducer,
-                    int maxThreads, int maxBlocks) {
-  int threads =
-      (numElements < maxThreads * 2) ? nextPow2(numElements / 2) : maxThreads;
-  int blocks = std::max(1, numElements / (threads * 2));
-  blocks = min(maxBlocks, blocks);
-  printf("threads = %d, blocks = %d\n", threads, blocks);
-
-  dim3 dimBlock(threads, 1, 1);
-  dim3 dimGrid(blocks, 1, 1);
-
-  multiBlockReduce<<<dimGrid, dimBlock, 0>>>(numElements, isPow2(numElements),
-                                             I, O, reducer, threads);
+__device__ void Unlock() { atomicExch(&mutex, 0U); }
 }
 
 template <typename T>
@@ -175,23 +47,242 @@ struct Max {
   }
 };
 
+template <typename T>
+struct Min {
+  __forceinline__ __host__ __device__ T operator()(const T& a,
+                                                   const T& b) const {
+    return a > b ? b : a;
+  }
+};
+
+template <typename T>
+struct Prod {
+  __forceinline__ __host__ __device__ T operator()(const T& a,
+                                                   const T& b) const {
+    return a * b;
+  }
+};
+
+template <typename T>
+__forceinline__ __device__ float CudaShuffleDownSync(unsigned mask, T val,
+                                                     int delta,
+                                                     int width = 32) {
+#if CUDA_VERSION < 9000
+  return __shfl_down(val, delta, width);
+#else
+  return __shfl_down_sync(mask, val, delta, width);
+#endif
+}
+
+template <typename T>
+__forceinline__ __device__ T CudaShuffleSync(unsigned mask, T val, int src_line,
+                                             int width = 32) {
+#if CUDA_VERSION < 9000
+  return __shfl(val, src_line, width);
+#else
+  return __shfl_sync(mask, val, src_line, width);
+#endif
+}
+
+// Works only for power-of-2 arrays.
 template <typename T, typename Reducer>
-void ReduceImpl(const T* I, T* O, const std::vector<int>& axes, int in_rank,
-                int in_dim0, int in_dim1, int in_dim2, int out_rank,
-                Reducer reducer, int maxThreads, int maxBlocks) {
-  if (out_rank == 0) {
-    // reduction to a scalar
-    reduceToScalar(I, O, in_dim0 * in_dim1 * in_dim2, reducer, maxThreads,
-                   maxBlocks);
-  } else if (in_rank == 2UL && out_rank == 1 && axes[0] == 0) {
-    // row reduction.
-    rowReduction(I, O, in_dim0, in_dim1, reducer, maxThreads);
-  } else if (in_rank == 2UL && out_rank == 1 && axes[0] == 1) {
-    // column reduction.
-    columnReduction(I, O, in_dim0, in_dim1, reducer, maxThreads);
-  } else {
-    throw std::invalid_argument("Not implemented yet.");
+__device__ float Power2Reduce(T val, int tid, T* shm, Reducer reducer,
+                              int blockSize, T init_val) {
+  unsigned mask = 0u;
+  CREATE_SHFL_MASK(mask, tid < blockSize);
+
+  val = reducer(val, CudaShuffleDownSync(mask, val, 16));
+  val = reducer(val, CudaShuffleDownSync(mask, val, 8));
+  val = reducer(val, CudaShuffleDownSync(mask, val, 4));
+  val = reducer(val, CudaShuffleDownSync(mask, val, 2));
+  val = reducer(val, CudaShuffleDownSync(mask, val, 1));
+
+  if (tid < warpSize) shm[tid] = init_val;
+  __syncthreads();
+
+  if (tid % warpSize == 0) shm[tid / warpSize] = val;
+  __syncthreads();
+
+  CREATE_SHFL_MASK(mask, tid < warpSize);
+  if (tid < warpSize) {
+    val = shm[tid];
+    val = reducer(val, CudaShuffleDownSync(mask, val, 16));
+    val = reducer(val, CudaShuffleDownSync(mask, val, 8));
+    val = reducer(val, CudaShuffleDownSync(mask, val, 4));
+    val = reducer(val, CudaShuffleDownSync(mask, val, 2));
+    val = reducer(val, CudaShuffleDownSync(mask, val, 1));
+  }
+  return val;
+}
+
+// Works for inputs with an arbitrary size.
+// Reduces inputs to a scalar in shared memory.
+template <typename T, typename Reducer>
+__device__ void BlockScalarReduceKernel(unsigned int num_elements, bool is_pow2,
+                                        const T* I, T* O, Reducer reducer,
+                                        int block_size, T init_val) {
+  const int kWarpSize = 32;
+  __shared__ T shm[kWarpSize];
+
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x * (block_size * 2) + threadIdx.x;
+  unsigned int grid_size = block_size * 2 * gridDim.x;
+
+  T val = init_val;
+  while (i < num_elements) {
+    val = reducer(val, I[i]);
+    if (is_pow2 || i + block_size < num_elements)
+      val = reducer(val, I[i + block_size]);
+    i += grid_size;
+  }
+  __syncthreads();
+
+  val = Power2Reduce(val, tid, shm, reducer, block_size, init_val);
+
+  if (tid == 0) O[0] = val;
+}
+
+template <typename T, typename Reducer>
+__global__ void MultiBlockScalarReduceKernel(unsigned int num_elements,
+                                             bool is_pow2, const T* I, T* O,
+                                             Reducer reducer, int block_size,
+                                             T init_val, T scale) {
+  __shared__ T partial_sum;
+  bool __shared__ isLast;
+
+  BlockScalarReduceKernel(num_elements, is_pow2, I, &partial_sum, reducer,
+                          block_size, init_val);
+
+  if (threadIdx.x == 0) {
+    // TODO(Ying): Use atomic lock may not be optimal.
+    Lock();
+    O[0] = reducer(O[0], partial_sum);
+    Unlock();
+
+    if (atomicInc(&count, gridDim.x) != (gridDim.x - 1)) return;
+    // The last thread multiplys the scale factor.
+    O[0] *= scale;
+    count = 0;
   }
 }
 
+// Works only if there are <= 16 columns.
+// Each warp sums over multiple rows at once.
+template <typename T, typename Reducer>
+__global__ void ColumnReduceMax16ColumnsKernel(const T* I, T* O, int num_rows,
+                                               int num_cols, Reducer reducer,
+                                               T init_val, T scale) {
+  const int kWarpSize = 32;
+
+  const int rows_per_warp = kWarpSize / num_cols;
+  int stride = rows_per_warp * blockDim.y * gridDim.y;
+
+  const int lane = threadIdx.x % kWarpSize;
+  const int lane_row = lane / num_cols;
+
+  const int start_row_warp =
+      rows_per_warp * (blockIdx.y * blockDim.y + threadIdx.y);
+  const int start_row_lane = start_row_warp + lane_row;
+
+  int row = start_row_lane;   // The actual row index in the input matrix.
+  int col = lane % num_cols;  // The actual column index in the input matrix.
+
+  T val = init_val;
+  int global_pos = row * num_cols + col;
+  if (global_pos < num_rows * num_cols) val = I[global_pos];
+
+  row += stride;
+  for (; row < num_rows; row += stride) {
+    // If more than multiple grids are needed, reduce over them into one.
+    global_pos = row * num_cols + col;
+    if (global_pos < num_rows * num_cols) val = reducer(val, I[global_pos]);
+  }
+
+  const int rows_in_this_warp = min(rows_per_warp, num_rows - start_row_warp);
+  for (int i = 1; i < rows_in_this_warp; ++i) {
+    T tmp = CudaShuffleSync(0xffffffff, val,
+                            static_cast<int>(threadIdx.x + i * num_cols));
+    if (lane < num_cols) val = reducer(val, tmp);
+  }  // Up to now, val in lane 0 ~ column in a warp sum reduce over
+     // `rows_in_this_warp` rows.
+
+  __shared__ T partial_sums[kWarpSize * (kWarpSize + 1)];
+  if (lane < num_cols) partial_sums[lane * (kWarpSize + 1) + threadIdx.y] = val;
+  __syncthreads();
+
+  if (threadIdx.y == 0 && threadIdx.x < num_cols) {
+    T s = partial_sums[threadIdx.x * (kWarpSize + 1)];
+
+    if (blockDim.y > 1) {
+      for (int row = 1; row < blockDim.y; ++row) {
+        T t = partial_sums[threadIdx.x * (kWarpSize + 1) + row];
+        s = reducer(s, t);
+      }
+    }
+
+    if (gridDim.y > 1) {
+      // TODO(Ying) not implemented yet.
+    } else
+      O[col] = s;
+  }
+}
+
+template <typename T, typename Reducer>
+__global__ void MultiBlockColumnReduceMax16ColumnsKernel(
+    const T* I, volatile T* O, int num_rows, int num_cols, Reducer reducer,
+    T init_val, T scale) {
+  const int kMaxCols = 16;
+  volatile __shared__ T shm[16];
+}
+
+template <typename T, typename Reducer>
+__global__ void ColumnReduceSimpleKernel(const T* I, T* O, int num_rows,
+                                         int num_cols, Reducer reducer,
+                                         T scale) {
+  // TODO(Ying) A simple implementation that sssigns one column to a thread.
+  const int gid = threadIdx.x + blockIdx.x * blockDim.x;
+  const int elems_per_plane = num_rows * num_cols;
+
+  const int plane = gid / num_cols;
+  const int col = gid % num_cols;
+
+  if (plane >= 1) return;
+
+  if (num_rows == 1) {
+    // Only one row, no need to reduce. Degenerates to Identity mapping.
+    O[plane * elems_per_plane + col] = I[plane * elems_per_plane + col];
+    return;
+  }
+
+  T val = reducer(I[plane * elems_per_plane + col],
+                  I[plane * elems_per_plane + num_cols + col]);
+  for (int row = 2; row < num_rows; ++row)
+    val = reducer(val, I[plane * elems_per_plane + row * num_cols + col]);
+
+  O[plane * num_cols + col] = val * scale;
+}
+
+// Assigns one block to reduce over one row.
+template <typename T, typename Reducer>
+__global__ void RowReduceKernel(const T* I, T* O, int num_rows, int num_cols,
+                                int block_size, Reducer reducer, T init_val,
+                                T scale) {
+  // TODO(Ying) A simple implementation. Not optimized for colums numbers are
+  // less than 32 and 16.
+
+  int tid = threadIdx.x;
+  int next_idx = blockIdx.x * num_cols + tid;
+  int cur_idx = tid;
+
+  T val = init_val;
+  for (; cur_idx < num_cols; next_idx += block_size, cur_idx += block_size)
+    val = reducer(val, I[next_idx]);
+  __syncthreads();
+
+  const int kWarpSize = 32;
+  __shared__ T shm[kWarpSize];
+  val = Power2Reduce(val, tid, shm, reducer, block_size, init_val);
+
+  if (tid == 0) O[blockIdx.x] = val * scale;
+}
 #endif
