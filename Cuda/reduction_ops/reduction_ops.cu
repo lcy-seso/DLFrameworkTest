@@ -15,7 +15,7 @@ int getOutputSize(const std::vector<int>& tensor_shape,
 }
 
 int main(int argc, char* argv[]) {
-  std::vector<int> kTensorShape = {357, 7};
+  std::vector<int> kTensorShape = {757, 3};
   std::vector<int> axes = {0};
   int out_rank = 1;
 
@@ -31,7 +31,11 @@ int main(int argc, char* argv[]) {
 
   cudaMallocHost((void**)&h_a, sizeof(float) * product);
   int out_size = getOutputSize(kTensorShape, axes);
+
+  int out_size_tmp = out_size;
+  out_size = 32 * 16;  // hard code for tests.
   cudaMallocHost((void**)&h_b, sizeof(float) * out_size);
+  out_size = out_size_tmp;
 
   // random initialization of matrix A.
   for (size_t i = 0; i < product; ++i) h_a[i] = static_cast<float>(i + 1);
@@ -61,7 +65,7 @@ int main(int argc, char* argv[]) {
   int in_dim2 = kTensorShape.size() > 2 ? kTensorShape[2] : 1;
 
   float init_val = 0.;
-  float scale = 1. ;
+  float scale = 1. / in_dim0;
   ReduceImpl<float, Sum<float>>(d_a, d_b, axes, kTensorShape.size(), in_dim0,
                                 in_dim1, in_dim2, out_rank, Sum<float>(),
                                 kMaxThreads, kMaxBlocks, init_val, scale);

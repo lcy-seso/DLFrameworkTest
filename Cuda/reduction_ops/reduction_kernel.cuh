@@ -84,18 +84,22 @@ __forceinline__ __device__ T CudaShuffleSync(unsigned mask, T val, int src_line,
 #endif
 }
 
-// Works only for power-of-2 arrays.
 template <typename T, typename Reducer>
-__device__ float Power2Reduce(T val, int tid, T* shm, Reducer reducer,
-                              int blockSize, T init_val) {
-  unsigned mask = 0u;
-  CREATE_SHFL_MASK(mask, tid < blockSize);
-
+__forceinline__ __device__ T WrapReduce(T val, unsigned mask, Reducer reducer) {
   val = reducer(val, CudaShuffleDownSync(mask, val, 16));
   val = reducer(val, CudaShuffleDownSync(mask, val, 8));
   val = reducer(val, CudaShuffleDownSync(mask, val, 4));
   val = reducer(val, CudaShuffleDownSync(mask, val, 2));
-  val = reducer(val, CudaShuffleDownSync(mask, val, 1));
+  return reducer(val, CudaShuffleDownSync(mask, val, 1));
+}
+
+// Works only for power-of-2 arrays.
+template <typename T, typename Reducer>
+__device__ T Power2Reduce(T val, int tid, T* shm, Reducer reducer,
+                          int blockSize, T init_val) {
+  unsigned mask = 0u;
+  CREATE_SHFL_MASK(mask, tid < blockSize);
+  val = WrapReduce(val, mask, reducer);
 
   if (tid < warpSize) shm[tid] = init_val;
   __syncthreads();
@@ -106,11 +110,7 @@ __device__ float Power2Reduce(T val, int tid, T* shm, Reducer reducer,
   CREATE_SHFL_MASK(mask, tid < warpSize);
   if (tid < warpSize) {
     val = shm[tid];
-    val = reducer(val, CudaShuffleDownSync(mask, val, 16));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 8));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 4));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 2));
-    val = reducer(val, CudaShuffleDownSync(mask, val, 1));
+    val = WrapReduce(val, mask, reducer);
   }
   return val;
 }
@@ -148,31 +148,38 @@ __global__ void MultiBlockScalarReduceKernel(unsigned int num_elements,
                                              Reducer reducer, int block_size,
                                              T init_val, T scale) {
   __shared__ T partial_sum;
-  bool __shared__ isLast;
 
   BlockScalarReduceKernel(num_elements, is_pow2, I, &partial_sum, reducer,
                           block_size, init_val);
 
-  if (threadIdx.x == 0) {
-    // TODO(Ying): Use atomic lock may not be optimal.
-    Lock();
-    O[0] = reducer(O[0], partial_sum);
-    Unlock();
+  if (gridDim.x > 1) {
+    if (threadIdx.x == 0) {
+      // TODO(Ying): Use atomic lock may not be optimal. Other choices are
+      // synchronizing by using global memory, or launch 2 kernels.
+      Lock();
+      O[0] = reducer(O[0], partial_sum);
+      Unlock();
 
-    if (atomicInc(&count, gridDim.x) != (gridDim.x - 1)) return;
-    // The last thread multiplys the scale factor.
-    O[0] *= scale;
-    count = 0;
-  }
+      if (atomicInc(&count, gridDim.x) != (gridDim.x - 1)) return;
+      // The last thread multiplys the scale factor.
+      O[0] *= scale;
+      count = 0;
+    }
+  } else
+    O[0] = partial_sum * scale;
 }
 
 // Works only if there are <= 16 columns.
 // Each warp sums over multiple rows at once.
 template <typename T, typename Reducer>
-__global__ void ColumnReduceMax16ColumnsKernel(const T* I, T* O, int num_rows,
-                                               int num_cols, Reducer reducer,
-                                               T init_val, T scale) {
+__device__ void ColumnReduceMax16ColumnsKernel(const T* I, volatile T* O,
+                                               int num_rows, int num_cols,
+                                               Reducer reducer, T init_val,
+                                               T scale) {
+  // NOTE: The output memory `O` MUST be global memory whose size is at least
+  // gridDim.y * 16. Here 16 is the max column number.
   const int kWarpSize = 32;
+  const int kMaxColNum = 16;
 
   const int rows_per_warp = kWarpSize / num_cols;
   int stride = rows_per_warp * blockDim.y * gridDim.y;
@@ -193,7 +200,6 @@ __global__ void ColumnReduceMax16ColumnsKernel(const T* I, T* O, int num_rows,
 
   row += stride;
   for (; row < num_rows; row += stride) {
-    // If more than multiple grids are needed, reduce over them into one.
     global_pos = row * num_cols + col;
     if (global_pos < num_rows * num_cols) val = reducer(val, I[global_pos]);
   }
@@ -203,7 +209,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(const T* I, T* O, int num_rows,
     T tmp = CudaShuffleSync(0xffffffff, val,
                             static_cast<int>(threadIdx.x + i * num_cols));
     if (lane < num_cols) val = reducer(val, tmp);
-  }  // Up to now, val in lane 0 ~ column in a warp sum reduce over
+  }  // Up to now, threads (lane 0 ~ column) in a warp do reduction over
      // `rows_in_this_warp` rows.
 
   __shared__ T partial_sums[kWarpSize * (kWarpSize + 1)];
@@ -220,19 +226,42 @@ __global__ void ColumnReduceMax16ColumnsKernel(const T* I, T* O, int num_rows,
       }
     }
 
-    if (gridDim.y > 1) {
-      // TODO(Ying) not implemented yet.
-    } else
-      O[col] = s;
+    O[col + blockIdx.y * kMaxColNum] = s * scale;
   }
 }
 
 template <typename T, typename Reducer>
-__global__ void MultiBlockColumnReduceMax16ColumnsKernel(
-    const T* I, volatile T* O, int num_rows, int num_cols, Reducer reducer,
-    T init_val, T scale) {
-  const int kMaxCols = 16;
-  volatile __shared__ T shm[16];
+__global__ void MultiBlockColumnReduceMax16ColumnsKernel(const T* I, T* O,
+                                                         int num_rows,
+                                                         int num_cols,
+                                                         Reducer reducer,
+                                                         T init_val, T scale) {
+  const int kMaxColNum = 16;
+
+  ColumnReduceMax16ColumnsKernel(I, O, num_rows, num_cols, reducer, init_val,
+                                 gridDim.y > 1 ? 1 : scale);
+
+  if (gridDim.y > 1) {
+    __threadfence();
+    __shared__ bool isLast;
+
+    if (threadIdx.x == 0 && threadIdx.y == 0)
+      isLast = (atomicInc(&count, gridDim.x) == gridDim.y - 1);
+    __syncthreads();
+
+    if (isLast) {
+      if (threadIdx.x == 0 && threadIdx.y < num_cols) {
+        O[threadIdx.y] =
+            scale * reducer(O[threadIdx.y], O[threadIdx.y + kMaxColNum]);
+
+        for (int i = 2; i < gridDim.y; ++i)
+          O[threadIdx.y] =
+              reducer(O[threadIdx.y], O[threadIdx.y + i * kMaxColNum]);
+      }
+
+      count = 0;
+    }
+  }
 }
 
 template <typename T, typename Reducer>
@@ -249,7 +278,7 @@ __global__ void ColumnReduceSimpleKernel(const T* I, T* O, int num_rows,
   if (plane >= 1) return;
 
   if (num_rows == 1) {
-    // Only one row, no need to reduce. Degenerates to Identity mapping.
+    // Only one row, no need to reduce. Equal to Identity mapping.
     O[plane * elems_per_plane + col] = I[plane * elems_per_plane + col];
     return;
   }

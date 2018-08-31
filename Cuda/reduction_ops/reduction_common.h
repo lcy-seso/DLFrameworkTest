@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include "stdio.h"
 
-#include "reduction_kernel.h"
+#include "reduction_kernel.cuh"
 
 namespace {
 inline bool IsPow2(unsigned int x) { return ((x & (x - 1)) == 0); }
@@ -48,6 +48,8 @@ void LaunchColumnReduction_LE16Cols(const T* I, T* O, int height, int width,
                                     Reducer reducer, T init_val, T scale) {
   int rows_per_warp = 32 / width;
   int threads = std::min(divup<int, int, int>(height, rows_per_warp), 32);
+
+  // 32 blocks at most.
   int blocks =
       std::min(divup<int, int, int>(height, rows_per_warp * threads), 32);
   if (blocks > 2 && blocks < 32) {  // Aligns to the nearest power2 value.
@@ -59,7 +61,7 @@ void LaunchColumnReduction_LE16Cols(const T* I, T* O, int height, int width,
   dim3 dimGrid(1, blocks, 1);
 
   printf("threads = %d, blocks = %d\n", threads, blocks);
-  ColumnReduceMax16ColumnsKernel<<<dimGrid, dimBlock>>>(
+  MultiBlockColumnReduceMax16ColumnsKernel<<<dimGrid, dimBlock>>>(
       I, O, height, width, reducer, init_val, scale);
 }
 
@@ -67,12 +69,12 @@ template <typename T, typename Reducer>
 void LaunchColumnReduction(const T* I, T* O, int height, int width,
                            Reducer reducer, int max_threads, T init_val,
                            T scale) {
-  // This kernel is ONLY for reduce a 2-D matrix along column.
+  // This kernel is ONLY for reducing a 2-D matrix along column.
   // TODO(Ying) Optimized implementation is not finished yet.
-  if (width <= 16) {
+  if (width <= 16)
     LaunchColumnReduction_LE16Cols(I, O, height, width, reducer, init_val,
                                    scale);
-  } else {
+  else {
     // TODO(Ying) A simple kernel for column reduction.
     int threads = 128;  // This lanuch configuration is not optimal.
     int blocks = divup<int, int, int>(width, threads);
@@ -94,8 +96,8 @@ void LaunchRowReduction(const T* I, T* O, int height, int width,
 
   dim3 dimBlock(threads, 1, 1);
   dim3 dimGrid(blocks, 1, 1);
-  printf("threads = %d, blocks = %d\n", threads, blocks);
 
+  printf("threads = %d, blocks = %d\n", threads, blocks);
   RowReduceKernel<<<dimGrid, dimBlock, 0>>>(I, O, height, width, threads,
                                             reducer, init_val, scale);
 }
