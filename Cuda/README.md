@@ -1,1 +1,1 @@
-Some cuda exercise.
+Some cuda tests.

@@ -1,27 +1,28 @@
+repos:
+-   repo: https://github.com/Lucas-C/pre-commit-hooks.git
+    sha: v1.0.1
+    hooks:
+    -   id: remove-crlf
+        files: (?!.*third_party)^.*$ | (?!.*book)^.*$
 -   repo: https://github.com/pre-commit/mirrors-yapf.git
-    sha: v0.16.0
+    sha: v0.23.0
     hooks:
     -   id: yapf
-        files: \.py$
+        files: (.*\.(py|bzl)|BUILD|.*\.BUILD|WORKSPACE)$
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    sha: a11d9314b22d8f8c7556443875b731ef05965464
+    sha: v1.4.0
     hooks:
+    -   id: check-added-large-files
     -   id: check-merge-conflict
     -   id: check-symlinks
     -   id: detect-private-key
-        files: (?!.*paddle)^.*$
+        files: (?!.*third_party)^.*$ | (?!.*book)^.*$
     -   id: end-of-file-fixer
-        files: \.md$
-    -   id: trailing-whitespace
-        files: \.md$
--   repo: https://github.com/Lucas-C/pre-commit-hooks
-    sha: v1.0.1
+-   repo: local
     hooks:
-    -   id: forbid-crlf
-        files: \.md$
-    -   id: remove-crlf
-        files: \.md$
-    -   id: forbid-tabs
-        files: \.md$
-    -   id: remove-tabs
-        files: \.md$
+    -   id: clang-format-with-version-check
+        name: clang-format
+        description: Format files with ClangFormat.
+        entry: bash ./tools/clang_format.hook -i
+        language: system
+        files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx|proto)$
