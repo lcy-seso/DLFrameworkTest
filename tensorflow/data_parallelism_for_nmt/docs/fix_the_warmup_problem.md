@@ -111,6 +111,8 @@ In the test below, the first ten mini-batches are for warm up. All the experimen
   |4|384|30.139|204871.508|3.66|
   |5|384|30.888|249886.395|4.46|
   |6|384|31.461|294399.139|5.26|
+  |7|384|30.762|351269.919|6.27|
+  |8|384|34.244|360629.809|6.44|
 
 ### dynamic rnn
 
@@ -134,6 +136,8 @@ In the test below, the first ten mini-batches are for warm up. All the experimen
   |4|384|39.998|154376.996|3.59|
   |5|384|40.937|188543.296|4.38|
   |6|384|41.674|222249.778|5.17|
+  |7|384|42.485|254344.076|5.91|
+  |8|384|44.706|276234.665|6.42|
 
 ## Test All-reduce
 
@@ -143,7 +147,7 @@ In the test below, the first ten mini-batches are for warm up. All the experimen
 
   ```bash
   CUDA_VISIBLE_DEVICES="x,...,x" python3 train.py \
-    --batch_size=360 \
+    --batch_size=384 \
     --variable_update="replicated" \
     --prefetch_data_to_device="true" \
     --gradient_repacking=4 \
@@ -161,6 +165,9 @@ In the test below, the first ten mini-batches are for warm up. All the experimen
   |4|384|42.471|145385.072|3.38|
   |5|384|45.899|168159.556|3.91|
   |6|384|50.470|183514.791|4.27|
+  |7|384|53.284|202794.006|4.72|
+  |8|384|58.793|210048.363|4.89|
+
 
 ## dynamic control flow vs. `cudnn_lstm`
 
