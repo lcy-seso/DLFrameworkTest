@@ -56,6 +56,7 @@ In the test below, the first ten mini-batches are for warm up. All the experimen
   |5|384|29.139|263568.201|4.76|
   |6|384|28.626|321945.466|5.81|
   |7|384|29.261|367456.175|6.63|
+  |8|384|29.228|420416.706|7.59|
 
 ### dynamic rnn
 
