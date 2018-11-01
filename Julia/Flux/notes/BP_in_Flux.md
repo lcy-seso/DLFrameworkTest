@@ -25,10 +25,53 @@ Important types to implement BP:
       ref::UInt32
       f::Call
       isleaf::Bool
-      grad::T
+      grad::T    # This is used to stored gradients
+                 # but why there is another `grad` in TrackedArray?
       ... # Cor
     end
     ```
+---
+
+* [track(f::F, xs...; kw...)](https://github.com/FluxML/Flux.jl/blob/master/src/tracker/Tracker.jl#L49), this function is used to regists a customized operator and its differential function.
+
+    ```julia {.line-numbers}
+    function track(f::F, xs...; kw...) where F
+        # y is the output of forward computation
+        # back is the differential function
+        y, back = _forward(f, xs...; kw...)
+        track(Call(back, tracker.(xs)), y)
+    end
+    ```
+
+    ```julia {.line-numbers}
+    track(f::Call, x) = Tracked{typeof(x)}(f)  # this adds a new item into the Tape.
+    ```
+
+    ```julia {.line-numbers}
+    tracker(x::TrackedArray) = x.tracker  # x.tracker is a TrackedArray.
+    ```
+
+---
+
+The lifetime of a tracked parameter.
+
+1. define a tracked parameter by using the [param](https://github.com/FluxML/Flux.jl/blob/master/src/tracker/Tracker.jl#L105) interface.
+
+    ```julia {.line-numbers}
+    param(x::Number) = TrackedReal(float(x))
+    param(xs::AbstractArray) = TrackedArray(float.(xs))
+
+    @grad identity(x) = data(x), Δ -> (Δ,)
+    param(x::TrackedReal) = track(identity, x)
+    param(x::TrackedArray) = track(identity, x)
+    ```
+    * Then calls the Cor of `TrackedArray`, breifly there will be two cases:
+        1. construct a new [param](https://github.com/FluxML/Flux.jl/blob/master/src/tracker/array.jl#L32) from Julia's native AbstractArray.
+
+            ```julia {.line-numbers}
+            TrackedArray(x::AbstractArray) = TrackedArray(Call(), x, zero(x))
+            ```
+        1. a tracked parameter
 
 ---
 
@@ -82,7 +125,16 @@ Let's look into implementation details of `back!`
           return
         end
         ```
+        line 5 is another method of `scan`:
+        ```julia {.line-numbers}
+        scan(c::Call) = foreach(scan, c.args)
+        ```
 1. back.jl --> [back(x::Tracked, Δ)](https://github.com/FluxML/Flux.jl/blob/master/src/tracker/back.jl#L34)
+    ```julia {.line-numbers}
+    accum!(x, Δ) = x .+ Δ
+    accum!(x::AbstractArray, Δ) = (x .+= Δ)
+    ```
+
     ```julia {.line-numbers}
     function back(x::Tracked, Δ)
       x.isleaf && (x.grad = accum!(x.grad, Δ); return)
