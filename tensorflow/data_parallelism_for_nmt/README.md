@@ -1,4 +1,4 @@
-# Test data parallelism on NMT model
+# Test data parallelism for NMT model
 
 **Test machine**
 - TensorFlow r1.8 compiled by gcc 4.9 with Python 3.6, Cuda 9.0, cudnn 7.1, NCCL 2.1
