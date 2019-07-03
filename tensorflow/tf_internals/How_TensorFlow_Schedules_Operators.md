@@ -2,42 +2,50 @@
 
 ---
 
-# Overall Summarization (I)
+# Overall Scheduling Process (I)
 
 * A <span style="background-color:#B3D9D9">global</span> thread pool is created at the time the `Session` object is created.
-* The user-defined computation will be _**partitioned to multiple sub-graphs across the device**_.
+* User's computation graph will be _**partitioned to multiple sub-graphs across the device**_.
 * One executor will be created for one sub-graph.
-   * *For example, in training tasks using 2 GPU cards, the graph will be partitioned into three parts: one for CPU, two for GPU card1 and card2.*
+   * *For example, in a training task using 2 GPU cards, the computation graph will be partitioned into three sub-graphs: one for CPU, two for GPU1 and GPU2 respectively.*
 * The thread pool is shared among all executors.
-* Fundamentally, the execution flow is bounded by the data flow dependencies among nodes in the computation graph.
 
 ---
 
-# Overall Summarization (II)
+# Overall Scheduling Process (II)
 
-Each executor then will run operators in its sub-graphs "one by one"
-* initialize a `ready` queue with root nodes on each device.
-* If there are multiple root nodes in one device, _**each root node will be directly run**_ by a thread if there are available threads in the thread pool.
-* <span style="background-color:#B3D9D9;">_**NOTE: Now the execution is in the computation thread**_</span>:
-  * Once a node finishes computing, it will annotate its successor nodes as ready, which means pushing the successors into the ready queue.
-  * Then all the OP kernels in the `ready` queue (kernels to be executed) will be examined one by one.
+Each executor run operators in its sub-graph one by one, and the execution flow is bounded by dataflow dependencies among nodes.
 
----
-
-# Overall Summarization (III)
-
-<span style="background-color:#B3D9D9;">_**Asynchronous kernels**_</span>: most GPU kernels
-
-* will be directly dispatched to threads in the thread pool.
-* *If all the kernels in the `ready` queue are asynchronous, the current thread will execute the last one instead of dispatching it*.
-
-<span style="background-color:#B3D9D9;">_**Synchronous kernels**_</span>: all CPU kernels
-* will be devided into two parts: expensive kernels and inexpensive kernels.
-* the current thread will execute <span style="background-color:#E0FFFF;">*one*</span> expensive kernel <span style="background-color:#DB7093;">_**or**_</span> <span style="background-color:#E0FFFF;">*all*</span> the inexpensive kernels.
+For each executor:
+1. a `ready` queue is created and is intialized with the root node
+1. if there is an idle thread in the thread pool, let's call it `thread A`, _**the root node will be directly scheduled to `thread A` to run**_
 
 ---
 
-# Some More Notes
+# Overall Scheduling Process (III)
+
+<span style="background-color:#B3D9D9;">_**NOTE: Now the execution is in `thread A`**_</span>:
+  * Once the root node(operator) finishes execution, it will annotate its successor nodes as ready by pushing them into the `ready` queue.
+  * Operators in the `ready` queue will be scheduled to run one by one.
+
+---
+
+# Overall Scheduling Process (IV)
+
+<span style="background-color:#B3D9D9;">_**NOTE Again: Now the execution is in `thread A`**_</span>:
+
+For **asynchronous kernels**:
+
+* directly dispatched to other threads in the thread pool.
+* *If all the kernels in the `ready` queue are asynchronous, `thread A` will execute the last one instead of dispatching it*.
+
+For **synchronous kernels**:
+* synchronous kernels are registered as expensive kernels and inexpensive kernels.
+* `thread A` will execute <span style="background-color:#E0FFFF;">*one*</span> expensive kernel <span style="background-color:#DB7093;">_**or**_</span> <span style="background-color:#E0FFFF;">*all*</span> the inexpensive kernels.
+
+---
+
+# Some More Implementation Detials
 
 * In local training (`DirectSession` is called), TensorFlow uses Eigen's ThreadPool.
 * Threads in the thread pool are scheduled by [`Eigen` implementation](https://github.com/ROCmSoftwarePlatform/eigen-upstream/blob/master/unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h#L20). TensorFlow does not schedule the threads itself.
