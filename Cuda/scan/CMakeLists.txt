@@ -24,7 +24,6 @@ set(CUDA_NVCC_FLAGS_RELEASE ${CUDA_NVCC_FLAGS_RELEASE} -w -O3 -gencode
 find_package(CUDA QUIET REQUIRED)
 
 
-include(third_party)
 
 include_directories("../")
 

@@ -1,31 +1,33 @@
-#include <cmath>
 #include <cuda_runtime.h>
-#include <stdexcept>
 #include <stdio.h>
+
+#include <cmath>
+#include <stdexcept>
 
 #define THRESHOLD 64
 #define CUDA_VERSION 9000
 
-#define CHECK(call)                                                            \
-  {                                                                            \
-    const cudaError_t error = call;                                            \
-    if (error != cudaSuccess) {                                                \
-      printf("Error: %s: %d, ", __FILE__, __LINE__);                           \
-      printf("code: %d, reason : %s\n", error, cudaGetErrorString(error));     \
-      exit(1);                                                                 \
-    }                                                                          \
+#define CHECK(call)                                                        \
+  {                                                                        \
+    const cudaError_t error = call;                                        \
+    if (error != cudaSuccess) {                                            \
+      printf("Error: %s: %d, ", __FILE__, __LINE__);                       \
+      printf("code: %d, reason : %s\n", error, cudaGetErrorString(error)); \
+      exit(1);                                                             \
+    }                                                                      \
   }
 
 #if CUDA_VERSION < 9000
 #define CREATE_SHFL_MASK(mask, predicate) mask = 0u;
 #else
 #define FULL_WARP_MASK 0xFFFFFFFF
-#define CREATE_SHFL_MASK(mask, predicate)                                      \
+#define CREATE_SHFL_MASK(mask, predicate) \
   mask = __ballot_sync(FULL_WARP_MASK, (predicate))
 #endif
 
-__forceinline__ __device__ float
-CudaShuffleDownSync(unsigned mask, float val, int delta, int width = 32) {
+__forceinline__ __device__ float CudaShuffleDownSync(unsigned mask, float val,
+                                                     int delta,
+                                                     int width = 32) {
 #if CUDA_VERSION < 9000
   return __shfl_down(val, delta, width);
 #else
@@ -33,7 +35,7 @@ CudaShuffleDownSync(unsigned mask, float val, int delta, int width = 32) {
 #endif
 }
 
-__device__ float reduceMax(float val, int tid, int blockSize, float *shm) {
+__device__ float reduceMax(float val, int tid, int blockSize, float* shm) {
   unsigned mask = 0u;
   CREATE_SHFL_MASK(mask, tid < blockSize);
 
@@ -43,12 +45,10 @@ __device__ float reduceMax(float val, int tid, int blockSize, float *shm) {
   val = max(val, CudaShuffleDownSync(mask, val, 2));
   val = max(val, CudaShuffleDownSync(mask, val, 1));
 
-  if (tid < warpSize)
-    shm[tid] = 0.;
+  if (tid < warpSize) shm[tid] = 0.;
   __syncthreads();
 
-  if (tid % warpSize == 0)
-    shm[tid / warpSize] = val;
+  if (tid % warpSize == 0) shm[tid / warpSize] = val;
   __syncthreads();
 
   CREATE_SHFL_MASK(mask, tid < warpSize);
@@ -66,14 +66,13 @@ __device__ float reduceMax(float val, int tid, int blockSize, float *shm) {
   return val;
 }
 
-__device__ __forceinline__ void findMax(float *I, float *shm, int blockSize,
+__device__ __forceinline__ void findMax(float* I, float* shm, int blockSize,
                                         int base, int curIdx, int nextIdx,
                                         int matWidth) {
   float val = -1.e20;
 
   while (curIdx < matWidth) {
-    if (val < I[nextIdx])
-      val = I[nextIdx];
+    if (val < I[nextIdx]) val = I[nextIdx];
     nextIdx += blockSize;
     curIdx += blockSize;
   }
@@ -81,20 +80,18 @@ __device__ __forceinline__ void findMax(float *I, float *shm, int blockSize,
 
   val = reduceMax(val, base, blockSize, shm);
 
-  if (0 == base)
-    shm[0] = val;
+  if (0 == base) shm[0] = val;
 
   __syncthreads();
 }
 
-__device__ __forceinline__ void subMaxAndExp(float *I, float *O, int curIdx,
+__device__ __forceinline__ void subMaxAndExp(float* I, float* O, int curIdx,
                                              int nextIdx, int blockSize,
                                              int matWidth, float max) {
   float val = 0.;
   while (curIdx < matWidth) {
     val = I[nextIdx] - max;
-    if (val < -THRESHOLD)
-      val = -THRESHOLD;
+    if (val < -THRESHOLD) val = -THRESHOLD;
     I[nextIdx] = val;
     O[nextIdx] = exp(val);
 
@@ -104,7 +101,7 @@ __device__ __forceinline__ void subMaxAndExp(float *I, float *O, int curIdx,
   __syncthreads();
 }
 
-__device__ float reduceSum(float val, int tid, int blockSize, float *shm) {
+__device__ float reduceSum(float val, int tid, int blockSize, float* shm) {
   unsigned mask = 0u;
   CREATE_SHFL_MASK(mask, tid < blockSize);
 
@@ -114,12 +111,10 @@ __device__ float reduceSum(float val, int tid, int blockSize, float *shm) {
   val += CudaShuffleDownSync(mask, val, 2);
   val += CudaShuffleDownSync(mask, val, 1);
 
-  if (tid < warpSize)
-    shm[tid] = 0.;
+  if (tid < warpSize) shm[tid] = 0.;
   __syncthreads();
 
-  if (tid % warpSize == 0)
-    shm[tid / warpSize] = val;
+  if (tid % warpSize == 0) shm[tid / warpSize] = val;
 
   __syncthreads();
 
@@ -138,7 +133,7 @@ __device__ float reduceSum(float val, int tid, int blockSize, float *shm) {
   return val;
 }
 
-__device__ __forceinline__ void valueSum(float *O, float *shm, int blockSize,
+__device__ __forceinline__ void valueSum(float* O, float* shm, int blockSize,
                                          int base, int curIdx, int nextIdx,
                                          int matWidth) {
   float val = 0.;
@@ -150,13 +145,12 @@ __device__ __forceinline__ void valueSum(float *O, float *shm, int blockSize,
   __syncthreads();
 
   val = reduceSum(val, base, blockSize, shm);
-  if (base == 0)
-    shm[0] = val;
+  if (base == 0) shm[0] = val;
 
   __syncthreads();
 }
 
-__device__ __forceinline__ void divSum(float *O, float sum, int curIdx,
+__device__ __forceinline__ void divSum(float* O, float sum, int curIdx,
                                        int nextIdx, int blockSize,
                                        int matWidth) {
   while (curIdx < matWidth) {
@@ -166,7 +160,7 @@ __device__ __forceinline__ void divSum(float *O, float sum, int curIdx,
   }
 }
 
-__device__ __forceinline__ void softmax(float *I, float *O, int blockSize,
+__device__ __forceinline__ void softmax(float* I, float* O, int blockSize,
                                         int base, int curIdx, int nextIdx,
                                         int matWidth) {
   const int warpSize = 32;
@@ -185,7 +179,7 @@ __device__ __forceinline__ void softmax(float *I, float *O, int blockSize,
   divSum(O, shm[0], curIdx, nextIdx, blockSize, matWidth);
 }
 
-__global__ void KeMatrixSoftMax(float *O, float *I, const size_t matWidth) {
+__global__ void KeMatrixSoftMax(float* O, float* I, const size_t matWidth) {
   int blockSize = blockDim.x;
   int base = threadIdx.x;
   int nextIdx = blockIdx.x * matWidth + base;
@@ -193,4 +187,3 @@ __global__ void KeMatrixSoftMax(float *O, float *I, const size_t matWidth) {
 
   softmax(I, O, blockSize, base, curIdx, nextIdx, matWidth);
 }
-
