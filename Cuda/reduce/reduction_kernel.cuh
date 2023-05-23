@@ -29,7 +29,7 @@ __device__ void Lock() {
     ;
 }
 __device__ void Unlock() { atomicExch(&mutex, 0U); }
-}
+}  // namespace
 
 template <typename T>
 struct Sum {

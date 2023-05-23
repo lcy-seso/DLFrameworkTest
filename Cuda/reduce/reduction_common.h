@@ -2,11 +2,12 @@
 #define _REDUCE_COMMON_H_
 
 #include <assert.h>
+
 #include <algorithm>
 #include <stdexcept>
-#include "stdio.h"
 
 #include "reduction_kernel.cuh"
+#include "stdio.h"
 
 namespace {
 inline bool IsPow2(unsigned int x) { return ((x & (x - 1)) == 0); }
@@ -41,7 +42,7 @@ template <typename T, typename X, typename Y>
 inline T divup(const X x, const Y y) {
   return static_cast<T>((x + y - 1) / y);
 }
-}
+}  // namespace
 
 template <typename T, typename Reducer>
 void LaunchColumnReduction_LE16Cols(const T* I, T* O, int height, int width,
