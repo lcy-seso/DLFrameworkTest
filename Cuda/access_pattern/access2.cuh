@@ -19,7 +19,6 @@ union Pack {
   T elem[N];
 };
 
-// 下面分别定义了两个代表输入输出的数据结构
 template <typename SRC, typename DST>
 struct DirectLoad {
   DirectLoad(const SRC* src, int64_t row_size) : src(src), row_size(row_size) {}
@@ -54,5 +53,34 @@ struct DirectStore {
   int64_t row_size;
 };
 
-template <typename T, typename LOAD, typename STORE, int BLOCK_SIZE>
-__global__ void CopyTest2(const T* input, T* output, int height, int width) {}
+template <typename T, typename LOAD, typename STORE, int GRID_SIZE,
+          int BLOCK_SIZE, int pack_size>
+__global__ void CopyTest2(LOAD load, STORE store, int height, int width) {
+  extern __shared__ __align__(sizeof(double)) unsigned char shared_buf[];
+  auto* buf = reinterpret_cast<T*>(shared_buf);
+  const int tid = threadIdx.x;
+
+  const int num_packs = width / pack_size;
+  for (int64_t row = blockIdx.x; row < height; row += GRID_SIZE) {
+    // Load into shared memory
+    for (int pack_id = tid; pack_id < num_packs; pack_id += BLOCK_SIZE) {
+      T pack[pack_size];
+      load.template load<pack_size>(pack, row, pack_id * pack_size);
+#pragma unroll
+      for (int i = 0; i < pack_size; ++i) {
+        buf[i * num_packs + pack_id] = pack[i];
+      }
+    }
+
+    // Store to output
+    for (int pack_id = tid; pack_id < num_packs; pack_id += BLOCK_SIZE) {
+      T pack[pack_size];
+#pragma unroll
+      for (int i = 0; i < pack_size; ++i) {
+        pack[i] = buf[i * num_packs + pack_id];
+      }
+
+      store.template store<pack_size>(pack, row, pack_id * pack_size);
+    }
+  }
+}
