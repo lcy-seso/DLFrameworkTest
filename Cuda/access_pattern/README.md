@@ -6,8 +6,8 @@
 
 |行数|列数|向量化|结果
 |:--|:--|:--|:--|
-|30000|1024|&#10008;|[link](figures/3000_1024.tsv)|
-|30000|1024|&#10004;|[link](figures/3000_1024_vectorized_access.tsv)|
+|30000|1024|&#10008;|[link](figures/30000_1024.tsv)|
+|30000|1024|&#10004;|[link](figures/30000_1024_vectorized_access.tsv)|
 |60000|4096|&#10008;|[link](figures/60000_4096.tsv)|
 |60000|4096|&#10004;|[link](figures/60000_4096_vectorized_access.tsv)|
 
