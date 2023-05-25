@@ -45,7 +45,7 @@ def parse1(log_file):
                     info[key]['elapsed'] = [elapsed]
                     info[key]['sm'] = [sm]
 
-    print(("Grid Size\tBlock Size\tRow Per TB"
+    print(("Launch Config\tRow Per TB"
            "\tElapsed Time(ms)\tBandwidth Utilization(%)\t"
            "SM Throughout(%)"))
     for key in info:
@@ -57,8 +57,10 @@ def parse1(log_file):
         sm = sum(info[key]['sm']) / n
         n = len(info[key]['elapsed'])
         elapsed = sum(info[key]['elapsed']) / n
-        print('%s\t%s\t%d\t%.4f\t%.4f\t%.4f' % (blocks, threads, row_per_tb,
-                                                elapsed, bandwidth, sm))
+
+        config = f"[{blocks}, {threads}]"
+        print('%s\t%d\t%.4f\t%.4f\t%.4f' % (config, row_per_tb, elapsed,
+                                            bandwidth, sm))
 
 
 def parse2(log_file):
@@ -107,7 +109,7 @@ def parse2(log_file):
                     info[key]['elapsed'] = [elapsed]
                     info[key]['sm'] = [sm]
 
-    print(("Grid Size\tBlock Size\tRow Per TB"
+    print(("Launch Config\tRow Per TB"
            "\tElapsed Time(ms)\tBandwidth Utilization(%)\t"
            "SM Throughout(%)"))
     for key in info:
@@ -119,11 +121,12 @@ def parse2(log_file):
         sm = sum(info[key]['sm']) / n
         n = len(info[key]['elapsed'])
         elapsed = sum(info[key]['elapsed']) / n
-        print('%s\t%s\t%d\t%.4f\t%.4f\t%.4f' % (blocks, threads, row_per_tb,
-                                                elapsed, bandwidth, sm))
+        config = f"[{blocks}, {threads}]"
+        print('%s\t%d\t%.4f\t%.4f\t%.4f' % (config, row_per_tb, elapsed,
+                                            bandwidth, sm))
 
 
 if __name__ == '__main__':
     # print(sys.argv[1])
-    # parse1(sys.argv[1])
-    parse2(sys.argv[1])
+    parse1(sys.argv[1])
+    # parse2(sys.argv[1])

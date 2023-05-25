@@ -1,13 +1,20 @@
 # 测试
 
-- 输入是一个大小为$[30000, 1024]$的矩阵，使用固定大小的`grid_size`和`block_size`。
-    - block size 越大，并行线程数越多，每个线程要做的事情越少 （现在只有load/store）。
-    - grid size越大，可以并发执行的blocks数越多，留给硬件进行调度。grid size小的时候，一个CTA以**串行**的方式做更多的工作。<ins>在这个非常简单的kernel里面**串行**远比让硬件自己调度效果差</ins>。
-- 输入在Global Memory，thread block中的线程合作将输入load到shared memory，再将shared memory中的数据写回另一块在Global Memory上的输出。shared memory大小等于行的大小。
-- 每个CTA处理$\frac{30000}{\text{grid\_size}}$行输入，每个线程处理$\frac{width}{\text{block\_size}}$个数据
+输入是一个大小为$[\text{rows}, \text{cols}]$的矩阵，使用固定大小的`grid_size`和`block_size`配置启动kernel。输入放在Global Memory，CTA中的线程合作将输入load到shared memory，再将shared memory中的数据写回另一块在Global Memory上的输出。shared memory大小等于矩阵行的大小。每个CTA处理$\frac{\text{rows}}{\text{grid\_size}}$行输入，每个线程处理$\frac{\text{cols}}{\text{block\_size}}$个数据。在Kernel2中进一步使用向量化指令进行读写。
+1. block size 越大，并行线程数越多，每个线程要做的事情越少（这个kernel中需要做的事情只有从global memory读，写shared memory；读shared memory写global memory）。
+1. grid size越大，可以并发执行的blocks数越多，留给硬件进行调度。grid size小的时候，一个CTA以**串行**的方式做更多的工作。
 
-[结果](figures/data.tsv)
+|行数|列数|向量化|结果
+|:--|:--|:--|:--|
+|30000|1024|&#10008;|[link](figures/3000_1024.tsv)|
+|30000|1024|&#10004;|[link](figures/3000_1024_vectorized_access.tsv)|
+|60000|4096|&#10008;|[link](figures/60000_4096.tsv)|
+|60000|4096|&#10004;|[link](figures/60000_4096_vectorized_access.tsv)|
 
+</p align="center">
+<img src="figures/access_test1.png" width=60%>
+<img src="figures/access_test2.png" width=60%>
+</p>
 
 # 背景
 
