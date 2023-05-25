@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 
-project(parallel_scan CXX C)
+project(access_pattern CXX C)
 set(CMAKE_BUILD_TYPE Release)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -23,8 +23,9 @@ set(CUDA_NVCC_FLAGS_RELEASE ${CUDA_NVCC_FLAGS_RELEASE} -w -O3 -gencode
 
 find_package(CUDA QUIET REQUIRED)
 
+
 include_directories("../")
 
-cuda_add_executable(scan main.cu)
-target_link_libraries(scan 
-                      ${CUDA_curand_LIBRARY} ${GTEST_LIBRARIES})
+cuda_add_executable(load_test main.cu)
+target_link_libraries(load_test
+                      ${CUDA_curand_LIBRARY})
