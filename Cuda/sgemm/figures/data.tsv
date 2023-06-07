@@ -1,0 +1,5 @@
+Shape[m,n,k]	Test Name	Elapsed Time(ms)	Ratio
+[256,1024,512]	cuBLAS	0.0637	1.
+[256,1024,512]	Naive	3.1863	50.0367
+[256,1024,512]	Kernel1	0.2202	3.4578
+[256,1024,512]	Kernel2	0.1780	2.7955
