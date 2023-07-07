@@ -1,172 +1,46 @@
 #pragma once
 
-#include <cublas_v2.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
-#include <curand.h>
 #include <stdio.h>
 
 #include <iostream>
 #include <sstream>
 
-#define CEIL_DIV(m, n) ((m) + (n)-1) / (n)
+#include "curand_fp16.h"
 
-#define cudaErrCheck(stat) \
-  { cudaErrCheck_((stat), __FILE__, __LINE__); }
-void cudaErrCheck_(cudaError_t stat, const char* file, int line) {
-  if (stat != cudaSuccess) {
-    fprintf(stderr, "CUDA Error: %s %s %d\n", cudaGetErrorString(stat), file,
-            line);
+__global__ void ConvertFp16ToFp32(float* out, const __half* in, int64_t numel) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid < numel) {
+    out[tid] = __half2float(in[tid]);
+    // printf("[%d] = %.6f\n", tid, out[tid]);
   }
 }
 
-#define cutlassErrCheck(stat)                                             \
-  {                                                                       \
-    cutlass::Status error = stat;                                         \
-    if (error != cutlass::Status::kSuccess) {                             \
-      std::cerr << "Got cutlass error: " << cutlassGetStatusString(error) \
-                << " at: " << __LINE__ << std::endl;                      \
-      exit(EXIT_FAILURE);                                                 \
-    }                                                                     \
+__global__ void CheckDiff(const __half* data1, const __half* data2,
+                          int64_t numel) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid < numel) {
+    printf("%.6f vs. %.6f\n", __half2float(data1[tid]),
+           __half2float(data2[tid]));
   }
-
-namespace {
-template <typename T>
-__global__ void naiveFillKernel(T* data, int num, T value) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (tid < num) data[tid] = value;
-}
-}  // namespace
-
-void fillZeros(float* data, int numel, float val = 0.) {
-  int block = 512;
-  int grid = (numel + block - 1) / block;
-
-  naiveFillKernel<float><<<grid, block>>>(data, numel, val);
 }
 
-void fillRandom(float* A, int elementNum) {
-  // create a pseudo-random number generator
-  curandGenerator_t prng;
-  curandCreateGenerator(&prng, CURAND_RNG_PSEUDO_DEFAULT);
-
-  // set the seed for the random number generator using the system clock
-  curandSetPseudoRandomGeneratorSeed(prng, (unsigned long long)clock());
-
-  // fill the array with random numbers on the device
-  curandGenerateUniform(prng, A, elementNum);
-}
-
-void printer(float* data, int numel) {
-  float* data_cpu = (float*)malloc(numel * sizeof(float));
-  cudaErrCheck(cudaMemcpy(data_cpu, data, numel * sizeof(float),
-                          cudaMemcpyDeviceToHost));
-
-  for (int i = 0; i < numel; ++i) std::cout << data_cpu[i] << std::endl;
-
-  free(data_cpu);
-}
-
-void CheckDiff(const float* data1, const float* data2, int numel) {
-  float* data1_cpu = (float*)malloc(numel * sizeof(float));
-  cudaErrCheck(cudaMemcpy(data1_cpu, data1, numel * sizeof(float),
-                          cudaMemcpyDeviceToHost));
-
-  float* data2_cpu = (float*)malloc(numel * sizeof(float));
-  cudaErrCheck(cudaMemcpy(data2_cpu, data2, numel * sizeof(float),
-                          cudaMemcpyDeviceToHost));
-
-  for (int i = 0; i < numel; ++i) {
-    if (abs(data1_cpu[i] - data2_cpu[i]) >= 1e-3) {
-      std::cout << i << ": " << data1_cpu[i] << " vs. " << data2_cpu[i]
-                << std::endl;
-    }
+__global__ void InitSeq(__half* data, int numel) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid < numel) {
+    data[tid] = __float2half(tid);
+    // printf("%d: %f\n", tid, __half2float(data[tid]));
   }
-
-  free(data1_cpu);
-  free(data2_cpu);
 }
 
-std::string strLaunchConfig(dim3 blocks, dim3 threads) {
-  std::stringstream ss;
-  ss << "Grid : {" << blocks.x << ", " << blocks.y << ", " << blocks.z << "}"
-     << std::endl
-     << "Blocks: {" << threads.x << ", " << threads.y << ", " << threads.z
-     << "}";
-  return ss.str();
-}
+void InitRandomHalfs(__half* data, int N) {
+  constexpr auto rng = CURAND_RNG_PSEUDO_XORWOW;
+  curand_fp16::generator_t generator;
+  curand_fp16::create(generator, rng);
+  curand_fp16::set_seed(generator, 0);
 
-// Matrix A, B and C are stored in row major fashion
-float testCuBLASGemmRowMajorABC(int m, int n, int k, const float* d_A,
-                                const float* d_B, float* d_C, int kIters = 10) {
-  // Here suppose the input matrices A and B are row-major.
-  // Compute C = A @ B, both A and B are not transposed.
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
+  curand_fp16::normal(generator, data, N, 1e-3, 0.05);
 
-  // NOTE: cuBLAS is column major
-  float elapsed = 0.;
-
-  float alf = 1.0, bet = 0.0;
-  const float* alpha = &alf;
-  const float* beta = &bet;
-  cublasHandle_t handle;
-  // create cuBlas handler
-  cublasCreate(&handle);
-
-  // warmup invocation.
-  cublasSgemm(handle, CUBLAS_OP_N /* trans_b */, CUBLAS_OP_N /* trans_a */, n,
-              m, k, alpha, d_B, n, d_A, k, beta, d_C, n);
-  cudaDeviceSynchronize();
-
-  cudaEventRecord(start, 0);
-  for (int i = 0; i < kIters; ++i)
-    cublasSgemm(handle, CUBLAS_OP_N /* trans_b */, CUBLAS_OP_N /* trans_a */, n,
-                m, k, alpha, d_B, n, d_A, k, beta, d_C, n);
-
-  cudaEventRecord(stop, 0);
-  cudaEventSynchronize(stop);
-
-  cudaEventElapsedTime(&elapsed, start, stop);
-
-  return elapsed / kIters;
-}
-
-// Matrix A, B and C are stored in column major fashion
-float testCuBLASGemmColumnMajorABC(int m, int n, int k, const float* d_A,
-                                   const float* d_B, float* d_C,
-                                   int kIters = 10) {
-  // Here suppose the input matrices A and B are row-major.
-  // Compute C = A @ B, both A and B are not transposed.
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
-
-  // NOTE: cuBLAS is column major
-  float elapsed = 0.;
-
-  float alf = 1.0, bet = 0.0;
-  const float* alpha = &alf;
-  const float* beta = &bet;
-  cublasHandle_t handle;
-  // create cuBlas handler
-  cublasCreate(&handle);
-
-  // warmup invocation.
-  cublasSgemm(handle, CUBLAS_OP_N /* trans_b */, CUBLAS_OP_N /* trans_a */, m,
-              n, k, alpha, d_A, m, d_B, k, beta, d_C, m);
-  cudaDeviceSynchronize();
-
-  cudaEventRecord(start, 0);
-  for (int i = 0; i < kIters; ++i) {
-    cublasSgemm(handle, CUBLAS_OP_N /* trans_b */, CUBLAS_OP_N /* trans_a */, m,
-                n, k, alpha, d_A, m, d_B, k, beta, d_C, m);
-  }
-  cudaEventRecord(stop, 0);
-  cudaEventSynchronize(stop);
-
-  cudaEventElapsedTime(&elapsed, start, stop);
-
-  return elapsed / kIters;
+  curand_fp16::destroy(generator);
 }

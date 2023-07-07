@@ -17,11 +17,12 @@
 #include <cutlass/transform/threadblock/regular_tile_iterator.h>
 #include <cutlass/transform/threadblock/regular_tile_iterator_tensor_op.h>
 
+/// Test kernel
 template <typename Mma, typename ThreadblockShape, typename WholeShape,
-          const uint kTHREADS>
-__global__ void WarpAPI_GEMM(typename Mma::ElementC* output_C,
-                             typename Mma::ElementA* const input_A,
-                             typename Mma::ElementB* const input_B) {
+          const uint kThreads>
+__global__ void GemmKernel(typename Mma::ElementC* output_C,
+                           typename Mma::ElementA* const input_A,
+                           typename Mma::ElementB* const input_B) {
   // Use AlignedBuffer to store trivially copyable objects in unions and
   // __shared__ buffers.
   __shared__ cutlass::AlignedBuffer<typename Mma::ElementA,
@@ -32,7 +33,6 @@ __global__ void WarpAPI_GEMM(typename Mma::ElementC* output_C,
                                     ThreadblockShape::kN * ThreadblockShape::kK>
       smem_buffer_B;
 
-  const uint kThreads = kTHREADS;
   const uint cRow = blockIdx.y;
   const uint cCol = blockIdx.x;
   const uint warpIdx = threadIdx.x / 32;
@@ -54,6 +54,7 @@ __global__ void WarpAPI_GEMM(typename Mma::ElementC* output_C,
       cutlass::transform::threadblock::PredicatedTileIterator<
           cutlass::MatrixShape<ThreadblockShape::kK, ThreadblockShape::kM>,
           typename Mma::ElementA, cutlass::layout::RowMajor, 1, ThreadMapA>;
+
   using GmemTileIteratorB =
       cutlass::transform::threadblock::PredicatedTileIterator<
           cutlass::MatrixShape<ThreadblockShape::kN, ThreadblockShape::kK>,
@@ -63,6 +64,7 @@ __global__ void WarpAPI_GEMM(typename Mma::ElementC* output_C,
       cutlass::transform::threadblock::RegularTileIterator<
           cutlass::MatrixShape<ThreadblockShape::kM, ThreadblockShape::kK>,
           typename Mma::ElementA, typename Mma::LayoutA, 1, ThreadMapA>;
+
   using SmemTileIteratorB =
       cutlass::transform::threadblock::RegularTileIterator<
           cutlass::MatrixShape<ThreadblockShape::kN, ThreadblockShape::kK>,
@@ -156,21 +158,39 @@ __global__ void WarpAPI_GEMM(typename Mma::ElementC* output_C,
 
     Mma mma;
 
-    CUTLASS_PRAGMA_NO_UNROLL
-    for (int iter = 0; iter < iterations; ++iter) {
-      CUTLASS_PRAGMA_UNROLL
-      for (int k = 0; k < ThreadblockShape::kK;
-           k += Mma::Policy::MmaShape::kK) {
-        iter_A.load(frag_A);
-        iter_B.load(frag_B);
-        ++iter_A;
-        ++iter_B;
+    CUTLASS_PRAGMA_UNROLL
+    for (int k = 0; k < ThreadblockShape::kK; k += Mma::Policy::MmaShape::kK) {
+      iter_A.load(frag_A);
+      iter_B.load(frag_B);
+      ++iter_A;
+      ++iter_B;
 
-        mma(accum, frag_A, frag_B, accum);
-      }
+      mma(accum, frag_A, frag_B, accum);
     }
+    __syncthreads();
   }
   typename Mma::IteratorC iter_C({tmp_warp_c, layout_C},
                                  cutlass::arch::LaneId());
   iter_C.store(accum);
+}
+
+template <typename Mma, typename ThreadblockShape, typename WholeShape>
+float CutlassGemm(typename Mma::ElementC* dC, typename Mma::ElementA* const dA,
+                  typename Mma::ElementB* const dB) {
+  using Shape = typename Mma::Shape;
+  const uint block_m = CEIL_DIV(WholeShape::kM, ThreadblockShape::kM);
+  const uint block_n = CEIL_DIV(WholeShape::kN, ThreadblockShape::kN);
+
+  const uint warp_m = CEIL_DIV(ThreadblockShape::kM, Shape::kM);
+  const uint warp_n = CEIL_DIV(ThreadblockShape::kN, Shape::kN);
+  const uint kWarpSize = 32;
+
+  dim3 gridDim(block_n, block_m);
+  const int threads = kWarpSize * warp_m * warp_n;
+  dim3 blockDim(threads, 1, 1);
+
+  GemmKernel<Mma, ThreadblockShape, WholeShape, threads>
+      <<<gridDim, blockDim>>>(dC, dA, dB);
+
+  return 0.;
 }

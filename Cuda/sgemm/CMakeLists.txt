@@ -36,6 +36,6 @@ include_directories("../build/third_party/cutlass/src/extern_cutlass/include")
 include_directories(
   "../build/third_party/cutlass/src/extern_cutlass/tools/util/include")
 include_directories("../")
-cuda_add_executable(gemm main.cu)
+cuda_add_executable(gemm main.cu curand_fp16.cu)
 target_link_libraries(gemm ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES}
                       ${CUDA_curand_LIBRARY})
