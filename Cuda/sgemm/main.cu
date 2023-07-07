@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "cuda_timer.cuh"
+#include "cutlass_warp_gemm.cuh"
 #include "utils.h"
 
 float TestGemmKernel(int test_num, int m, int n, int k, const float* d_A,
@@ -22,6 +23,42 @@ float TestGemmKernel(int test_num, int m, int n, int k, const float* d_A,
   }
 
   return elapsed;
+}
+
+template <typename Mma,               /// Warp-level matrix multiply-accumulate
+          typename ThreadblockShape,  /// Size of threadblock-scoped shape used
+                                      /// to store SMEM
+          typename WholeShape,        /// Size of kernel-scoped shape
+                                      /// The inner product operation
+                                      /// performed by GEMM
+          typename Operator = cutlass::arch::OpMultiplyAdd>
+float CutlassGemmKernel(const half* A, const half* B, half* C) {
+  // using Mma = Mma_;
+  // using ThreadblockShape = ThreadblockShape_;
+  // using WholeShape = WholeWShape_;
+  // using Operator = Operator_;
+
+  using Shape = typename Mma::Shape;
+  using ElementA = typename Mma::ElementA;
+  using LayoutA = typename cutlass::layout::RowMajor;
+  using ElementB = typename Mma::ElementB;
+  using LayoutB = typename cutlass::layout::ColumnMajor;
+  using ElementC = typename Mma::ElementC;
+  using LayoutC = typename Mma::LayoutC;
+
+  const uint BLOCKM = CEIL_DIV(WholeShape::kM, ThreadblockShape::kM);
+  const uint BLOCKN = CEIL_DIV(WholeShape::kN, ThreadblockShape::kN);
+  const uint BLOCKk = WholeShape::kK / ThreadblockShape::kK;
+  dim3 gridDim(BLOCKN, BLOCKM);
+
+  const uint WARPM = CEIL_DIV(ThreadblockShape::kM, Shape::kM);
+  const uint WARPN = CEIL_DIV(ThreadblockShape::kN, Shape::kN);
+  const uint WARPSIZE = 32;
+  const uint THREADNUM = WARPSIZE * WARPM * WARPN;
+  dim3 blockDim(THREADNUM, 1, 1);
+
+  WarpAPI_GEMM<Mma, ThreadblockShape, WholeShape, THREADNUM>
+      <<<gridDim, blockDim>>>(C, A, B);
 }
 
 int main(int argc, char** argv) {
@@ -60,6 +97,25 @@ int main(int argc, char** argv) {
   std::stringstream ss;
   ss << "[" << m << "," << n << "," << k << "]\t";
   std::cout << ss.str() << "cuBLAS\t" << base << "\t1." << std::endl;
+
+  // using WholeShape = cutlass::gemm::GemmShape<256, 256, 128>;
+  // using BlockShape = cutlass::gemm::GemmShape<64, 64, 64>;
+  // using WarpShape = cutlass::gemm::GemmShape<32, 32, 32>;
+  // using InstructionShape = cutlass::gemm::GemmShape<16, 8, 8>;
+
+  // using Element = cutlass::half_t;
+  // using ElementC = float;
+
+  // using GLayoutA = cutlass::layout::RowMajor;
+  // using GLayoutB = cutlass::layout::ColumnMajor;
+  // using SLayoutA = cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
+  //     cutlass::sizeof_bits<Element>::value, 64>;
+  // using SLayoutB = cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<
+  //     cutlass::sizeof_bits<Element>::value, 64>;
+
+  // using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
+  //     WarpShape, InstructionShape, Element, SLayoutA, Element, SLayoutB,
+  //     ElementC, cutlass::layout::RowMajor>::Type;
 
   cudaFree(d_A);
   cudaFree(d_B);
