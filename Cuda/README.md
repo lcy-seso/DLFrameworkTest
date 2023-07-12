@@ -20,7 +20,7 @@
 |<ins>**Total shared memory per multiprocessor**</ins>|65536 bytes (64 KB)|167936 bytes (164 KB)|102400 bytes (100 KB)|
 |Total number of registers available per block|65536|65536|65536|
 |Warp size|32|32|32|
-|Maximum number of threads per multiprocessor|1024|2048|1536|
+|<ins>**Maximum number of threads per multiprocessor**</ins>|1024<br>(**32 warps**)|2048<br>(**64 warps**)|1536<br>(**48 warps**)|
 |Maximum number of threads per block|1024|1024|1024|
 |Max dimension size of a thread block (x,y,z)|(1024, 1024, 64)|(1024, 1024, 64)|(1024, 1024, 64)|
 |Max dimension size of a grid size    (x,y,z)|(2147483647, 65535, 65535)|(2147483647, 65535, 65535)|(2147483647, 65535, 65535)
