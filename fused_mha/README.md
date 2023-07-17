@@ -74,14 +74,14 @@ $$C_{M_s \times N_s} += A^i_{M_s \times K_s}B^i_{K_s \times N_s}\qquad i \in [0,
 
     一个线程束由32个线程构成，通常有如下图所示的两种二维线程组织形式$[8 \times 4]$或者$[4 \times 8]$：
 
-    <p align="center">
-    <img src="figures/warp_organization.png" width=60%>
-    <br>Fig. 线程束中两种二线程组织方式
-    </p>
-
     假设一个thread block中有$N$个线程，构成了$\frac{N}{32}$个线程束。为了完成矩阵乘计算，这$\frac{N}{32}$个线程以2维方式组织。
 
-1. **Cutlass中Tensor Core MMA的InstructionShape**
+<p align="center">
+<img src="./figures/warp_organization.png" width=50%>
+<br>Fig. 线程束中两种二线程组织方式
+</p>
+
+3. **Cutlass中Tensor Core MMA的InstructionShape**
 
     Volta架构之后的GPU增加了转为DL任务设计的Tensor Core。CUDA 9.0之后提供了warp矩阵（Warp-level Matrix Mulitply and Accumulate）API，可以将Tensor Core上的matrix multiplication and accumulation$D = A × B + C$当作warp级别的操作进行调用。其中的A、B、C、D是一个更大都矩阵的tiles。wmma以warp为单位利用GPU上的Tensor Core进行矩阵乘运算，warp的所有线程可以合作完成在这些tile上的矩阵乘加操作。Tensor Core mma指令处理固定形状的矩阵乘，在不同架构上有所不同。以下信息截取自[cutlass的文档](https://github.com/NVIDIA/cutlass/blob/main/media/docs/functionality.md#warp-level-matrix-multiply-with-tensor-cores):
     
@@ -99,16 +99,49 @@ $$C_{M_s \times N_s} += A^i_{M_s \times K_s}B^i_{K_s \times N_s}\qquad i \in [0,
 
     Tensor Core的输入输出是寄存器。矩阵乘操作之前，操作数$A$，$B$和$C$必须加载到寄存器文件中。
 
-    <p align="center">
-    <img src="figures/warp_shape_and_instruction_shape.png" width=50%>
-    <br>Fig. Warp tile和Instruction Shape之间的关系
-    </p>
-
     wmma API暴露给Tensor Core的tile大小比Tensor Core每次操作矩阵乘的大小会大一些。每个wmma API的tile需要多个Tensor Core操作才能完成。可以观察上面表格中`TensorOp`的`Instruction Shape`和`Warp Shape`之间的关系：`Warp Shape`的$K$维度和`Instruction Shape`的$K$维度总是一样的，如果使用了Tensor Core wma指令，warp tile也会受到限制。这相当于warp中的合作线程一起完成warp tile大小的矩阵乘法，这样一个矩阵乘法会对$M$和$N$维度进一步分块，而$K$维度不分块。
+
+<p align="center">
+<img src="./figures/warp_shape_and_instruction_shape.png" width=40%>
+<br>Fig. Warp tile和Instruction Shape之间的关系
+</p>
 
 ## Flash Attention代码中的分块据策略
 
+MHA fused的核心将两个矩阵乘的控制结构进行了fuse了。矩阵乘的计算规模由$M$，$N$和$K$三个维度描述。
+
+$$
+\begin{align*}
+P &= QK \\
+O &= OV
+\end{align*}
+$$
+
+|Dimension|Meaning|
+|:--|:--|
+|$M_1$|query length|
+|$N_1$|key length|
+|$K_1$|head dimension|
+|$M_2$|query length|
+|$N_2$|query length|
+|$K_2$|head dimension|
+
+<p align="center">
+<img src="figures/attn_tile.png" width=60%><br>
+Fig. MHA分块示意图
+</p>
+
+分块越大shared memory消耗越多，直到能launch的blocks数目减少。
+
+1. $B_c$大，kernel内部的串行循环次数就少。在作者目前的实现中，沿key序列长度维度的分块大小$B_c$只做了两种大小：128，256。
+2. query的每个分块都要load整个序列长度的key和value，$B_r$越大，访问key, value 序列的次数就越少。沿query序列长度维度的分块大小$B_r$会影响blocks数目（GPU上blocks以waves调度执行，blocks数目的选择有可能影响尾效应）。
+
+调用cutlass时，矩阵乘法的分块决定时，每个CTA中有多少个线程也已经决定了。
+
+实现的时候launch了`<batch_size, num_heads, num_splits>`个thread blocks。`num_splits`[通过一个简单的启发式策略选择能够最大化occupancy的num_splits](https://github.com/HazyResearch/flash-attention/blob/main/csrc/flash_attn/src/fmha_fwd_launch_template.h#L72)。
+
 入口点在这里[run_fmha_fwd](https://github.com/HazyResearch/flash-attention/blob/main/csrc/flash_attn/fmha_api.cpp#L179)，按照`head_dim`的大小实现了三种kernel：
+
 ```cpp
 if (launch_params.params.d <= 32) {
     run_fmha_fwd_hdim32(launch_params);
@@ -135,7 +168,7 @@ int max_seqlen_q = ((max_seqlen_q_ + 16 - 1) / 16) * 16;
 bool loop = max_seqlen_k > blocksize_c;
 ```
 
-1. GEMM1: $QK$
+1. GEMM1: $P = QK$
 
     |head_dim|max $K$ length|$GEMM_1[M,N,K]$|$\text{warps}_M,\text{warps}_N,\text{warps}_K$<br>（number of warps per CTA）|
     |:--:|:--:|:--:|:--:|
@@ -145,7 +178,7 @@ bool loop = max_seqlen_k > blocksize_c;
     |$64$|$\ge 256$|$16,256,64$|$1,4,1$|
     |$128$||$16, 128, 128$|$1,4,1$|
 
-1. GEMM2: $KV$
+2. GEMM2: $O = KV$
 
     |head_dim|max $K$ length|$GEMM_2[M,N,K]$|$\text{warps}_M,\text{warps}_N,\text{warps}_K$<br>（number of warps per CTA）|
     |:--:|:--:|:--:|:--:|
