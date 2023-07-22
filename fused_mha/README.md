@@ -15,7 +15,7 @@
 
 ## 一些准备知识
 
-在理解flash attention代码目前的实现周期，我们先罗列一些基本的背景知识以方便下面的分析。
+在理解flash attention代码目前的实现之前，我们先罗列一些基本的背景知识以方便下面的分析。
 
 ### Occupancy的估算
 
@@ -83,7 +83,7 @@ $$C_{M_s \times N_s} += A^i_{M_s \times K_s}B^i_{K_s \times N_s}\qquad i \in [0,
 
 3. **Cutlass中Tensor Core MMA的InstructionShape**
 
-    Volta架构之后的GPU增加了转为DL任务设计的Tensor Core。CUDA 9.0之后提供了warp矩阵（Warp-level Matrix Mulitply and Accumulate）API，可以将Tensor Core上的matrix multiplication and accumulation$D = A × B + C$当作warp级别的操作进行调用。其中的A、B、C、D是一个更大都矩阵的tiles。wmma以warp为单位利用GPU上的Tensor Core进行矩阵乘运算，warp的所有线程可以合作完成在这些tile上的矩阵乘加操作。Tensor Core mma指令处理固定形状的矩阵乘，在不同架构上有所不同。以下信息截取自[cutlass的文档](https://github.com/NVIDIA/cutlass/blob/main/media/docs/functionality.md#warp-level-matrix-multiply-with-tensor-cores):
+    Volta架构之后的GPU增加了专门为DL任务设计的Tensor Core。CUDA 9.0之后提供了warp矩阵（Warp-level Matrix Mulitply and Accumulate）API，可以将Tensor Core上的matrix multiplication and accumulation$D = A × B + C$当作warp级别的操作进行调用。其中的A、B、C、D是一个更大都矩阵的tiles。wmma以warp为单位利用GPU上的Tensor Core进行矩阵乘运算，warp的所有线程可以合作完成在这些tile上的矩阵乘加操作。Tensor Core mma指令处理固定形状的矩阵乘，在不同架构上有所不同。以下信息截取自[cutlass的文档](https://github.com/NVIDIA/cutlass/blob/main/media/docs/functionality.md#warp-level-matrix-multiply-with-tensor-cores):
     
     | **Opcode Class** | **Instruction Shape** | **Warp Shapes**                            |
     |------------------|-----------------------|--------------------------------------------|
@@ -245,3 +245,5 @@ struct FMHA_kernel_traits {
 1. [Understanding Latency Hiding on GPUs](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2016/EECS-2016-143.pdf)
 1. [High Performance GPU Tensor Core Code Generation for Matmul Using MLIR](https://mlir.llvm.org/OpenMeetings/2021-08-26-High-Performance-GPU-Tensor-CoreCode-Generation-for-Matmul-Using-MLIR.pdf)
 1. 关于Tensor Core mma指令的一些将解释可以在这篇论文[Modeling Deep Learning Accelerator Enabled GPUs](https://arxiv.org/pdf/1811.08309.pdf)中看到
+1. [NV_GPU tensor core 算力/带宽/编程模型分析](https://zhuanlan.zhihu.com/p/638129792)
+1. [Concurrent execution of CUDA and Tensor cores](https://forums.developer.nvidia.com/t/concurrent-execution-of-cuda-and-tensor-cores/222985/1)
