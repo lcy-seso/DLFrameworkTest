@@ -6,6 +6,7 @@
   - [一些准备知识](#一些准备知识)
     - [Occupancy的估算](#occupancy的估算)
     - [矩阵乘分块算法](#矩阵乘分块算法)
+    - [内存受限还是计算受限？](#内存受限还是计算受限)
   - [Flash Attention代码中的分块据策略](#flash-attention代码中的分块据策略)
 - [References](#references)
 
@@ -19,7 +20,15 @@
 
 ### Occupancy的估算
 
+GPU utilization可以以occupancy来度量。***occupancy受限于并行线程对片上资源的利用情况***，例如由nvcc这样的device compiler 最终决定的registers分配，和受程序员控制（可编程）的shared memory。一个kernek函数资源利用越多，能启动的并发线程数就越少（occupancy下降），性能有可能降低。
+
+由于on-chip资源十分有限，达到maximal occupancy（所有并发线程都跑起来）实际上非常困难。[查compute capability](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications)，每代硬件上，每个线程最多使用255个32bit寄存器，编译器也不会为线程分配更多寄存器了。如果以达到maximal occupancy (100%)为目标，一个线程使用的寄存器数目会非常受限。寄存器大多数情况下会成为一个中型kernel的occupancy limiting factor。
+
+保持较高的occupancy是在多数情况下都是一个有用的准则，能够帮助hide lantency。一个kernel实现时，会被下面这三个因素之一限制SM上的实际active warps：寄存器数目，warp数目（并发线程数），shared memory用量。
+
 以我正在使用的A6000为例，通过device query可知，A6000每个block最大shared memory是48K，一个SM有100K shared memory。如果每个block把shared memory用满（48K），那么一个SM最多只能同时调度2个block。如果增大per-block shared memory用量，有可能导致occupancy降低。
+
+>每一代硬件架构支持的每SM最大并发线程数不同，为了能达到理论上100%的occupancy，一个kernel在决定launch config时，block size应该至少被最大并发线程数整除。举例来说，A6000的每SM最大线程数是1536，那么block size选择256/512，计算任务的并发量足够，单kernel消耗的资源少，理论上有可能让SM上所有并发线程跑满。如果选择1024这也的block size，无法被1536整除，那么将无法达到100%的occupancy。
 
 $$occupancy = \frac{\text{active warps数目/SM}}{\text{最大可能active warp数目/SM}}$$
 
@@ -29,8 +38,6 @@ $$occupancy = \frac{\text{active warps数目/SM}}{\text{最大可能active warp�
 </p>
 
 >**NOTE**: 通过cudaGetDeviceProperties API可以查询 **reservedSharedMemPerBlock** （ it is the shared memory reserved by CUDA driver per block in bytes).
-
-保持较高的occupancy是在多数情况下都是一个有用的准则，能够帮助hide lantency。一个kernel实现时，会被下面这三个因素之一限制SM上的实际active warps：寄存器数目，warp数目，shared memory用量。
 
 任务以block为粒度调度到SM，只要有足够的资源，每个SM会load多个blocks。假设有一个kernel使用资源情况如下：
 
@@ -105,6 +112,52 @@ $$C_{M_s \times N_s} += A^i_{M_s \times K_s}B^i_{K_s \times N_s}\qquad i \in [0,
 <img src="./figures/warp_shape_and_instruction_shape.png" width=40%>
 <br>Fig. Warp tile和Instruction Shape之间的关系
 </p>
+
+### 内存受限还是计算受限？
+
+绘制Roofline model的经验方法：
+
+1. 计算三个量：时间，浮点计算次数（FLOPs），数据移动量（Bytes）
+1. 计算AI（x轴）和throughput（y轴）
+
+$$
+\begin{align*}
+\text{Arithmetic Intensity} &= \frac{\text{FLOPs}}{\text{data moved between fast and slow memory}}\quad \left(\frac{\text{FLOPs}}{\text{Bytes}}\right) \\
+\text{Performance} &= \frac{\text{FLOPs}}{\text{time}} \quad \left(\frac{\text{FLOPs}}{\text{time}}\right)
+\end{align*}
+$$
+
+不断变换setting，描绘出来一系列点。
+
+假设浮点数计算次数为$N_{op}$，内存访问量为$N_{byte}$，计算带宽为$BW_{math}$，内存带宽为$BW_{mem}$，访问内存花费的时间为$T_{mem}$计算花费的时间为$T_{math}$。可以让访存与计算重合，当他们完美重合时总运行时间为$\max (T_{mem},T_{math})$:
+
+$$
+\begin{align*}
+T_{mem} &= \frac{N_{byte}}{BW_{mem}} \\
+T_{math} &= \frac{N_{op}}{BW_{math}}
+\end{align*}
+$$
+
+- $T_{math} > T_{mem}$ 计算受限 (提高数据复用到一定程度)，下式成立：
+
+$$T_{math} > T_{mem} \rightarrow \frac{N_{op}}{N_{byte}} > \frac{BW_{math}}{BW_{mem}}$$
+
+- $T_{mem} > T_{math}$ 内存受限，下式成立：
+
+$$T_{math} < T_{mem} \rightarrow \frac{N_{op}}{N_{byte}} < \frac{BW_{math}}{BW_{mem}}$$
+
+给定硬件情况下，若算术强度 $>\frac{BW_{math}}{BW_{mem}}$则计算受限，反之为内存受限。以我在使用的三个测试机器为例：
+
+|Precision|[2080Ti](https://www.techpowerup.com/gpu-specs/geforce-rtx-2080-ti.c3305)|[RTX A6000](https://www.techpowerup.com/gpu-specs/rtx-a6000.c3686)|[A100 80G](https://www.techpowerup.com/gpu-specs/a100-pcie-80-gb.c3821)|
+|:--:|:--:|:--:|:--:|
+|**FP16**|$\frac{27\times 10^{12}}{616\times 10^{9}}=43.83$|$\frac{38.71\times 10^{12}}{768\times 10^{9}}=50.40$|$\frac{78 \times 10^{12}}{1935 \times {10^9}}=40.31$|
+|**FP32**|$\frac{13.45 \times 10^{12}}{616\times 10^{9}}=21.83$|$\frac{38.71\times 10^{12}}{768\times 10^{9}}=50.40$|$\frac{20 \times 10^{12}}{1935 \times {10^9}}=10.34$|
+|**FP64**|$\frac{420.2\times 10^{9}}{616\times 10^{9}}=0.68$|$\frac{1210\times 10^{9}}{768\times 10^{9}}=1.57$|$\frac{9.8 \times 10^{12}}{1935 \times {10^9}}=5.06$|
+|**BF16**|||$\frac{311.84 \times 10^{12}}{1935 \times {10^9}}=161.15$|
+
+对于$A\in \mathbb{R}^{m \times k}$，$B \in \mathbb{R}^{k \times n}$，$C \in \mathbb{R}^{m \times n}$ 这样一个矩阵乘法：
+1. 浮点计算次数：$2mnk$
+1. 访存次数：$m*k+k*n+m*n$
 
 ## Flash Attention代码中的分块据策略
 
@@ -247,3 +300,4 @@ struct FMHA_kernel_traits {
 1. 关于Tensor Core mma指令的一些将解释可以在这篇论文[Modeling Deep Learning Accelerator Enabled GPUs](https://arxiv.org/pdf/1811.08309.pdf)中看到
 1. [NV_GPU tensor core 算力/带宽/编程模型分析](https://zhuanlan.zhihu.com/p/638129792)
 1. [Concurrent execution of CUDA and Tensor cores](https://forums.developer.nvidia.com/t/concurrent-execution-of-cuda-and-tensor-cores/222985/1)
+1. [Mechanism behind Roofline Data Collection](https://www.nersc.gov/assets/Uploads/RooflineHack-2020-mechanism-v2.pdf)

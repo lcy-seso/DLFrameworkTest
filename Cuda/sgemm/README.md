@@ -19,7 +19,6 @@
 
 These kernel implementations are from this Github repo: [How to optimize SGEMM on NVIDIA GPUs](https://github.com/yzhaiustc/Optimizing-SGEMM-on-NVIDIA-Turing-GPUs).
 
-
 ## Background
 
 $$C[m,n] = \alpha\left( \sum_{k}A[m,k] * B[k,n] \right) + \beta C[m,n]$$
@@ -46,6 +45,32 @@ It is observable that <u>**each induction variable will occur in precisely two o
 1. the induction variables $i$ and $j$ index $C$. When induction variable $k$ varies, the same data in $C$ is accessed. **$k$ is the reuse direction of matrix $C$**.
 1. the induction variables $i$ and $k$ index $A$. When induction variable $j$ varies, the same data in $A$ is accessed. **$j$ is the reuse direction of matrix $C$**.
 1. the induction variables $k$ and $j$ index $B$. When induction variable $i$ varies, the same data in $B$ is accessed. **$i$ is the reuse direction of matrix $C$**.
+
+一个算法的计算强度是：基本操作的量（比如以浮点数乘加计算的次数进行计数）与在slow memory和fast memory之间搬运数据的量（比如以bytes，words为单位进行计数）的比值，由于搬运一个单位的数据比在这个数据上进行数值计算操作要慢，我们希望一个算法的计算强度足够高，做法是**希望操作数在cache中能维持尽可能久**。
+
+假设我们想计算出下面这样一个naive的三重`for`循环中的计算强度。为了计算下面这段程序的计算强度，我们必须知道**最内层语句s1执行时，数据在cache中的驻留情况**。
+
+假设cache中可以放下$A$，$B$，$C$矩阵的一些行，但是无法放下全部的矩阵。于是下面这段程序的执行，需要在cache与低速内存中换进换出操作数。
+
+```cpp
+for i = 0 : M - 1
+  for j = 0 : N - 1
+      for k = 0 : K - 1  // <-- fast changing dimension
+          C[i, j] = A[i, k] * B[k, j]  // s1
+```
+
+- 矩阵$C$不被循环变量$k$索引，矩阵$A$不被循环变量$j$索引，矩阵$B$不被循环变量$i$索引；
+- $C$的复用方向是$k$，$A$的复用方向是$j$，$B$的复用方向是$i$，循环变量变化速率：$k > j > i$；
+- 当$k$和$j$变化时，只会扫描$A$和$C$中非常小的一块数据，但是这时$B$不存在数据复用。于是$A$和$C$的一行可以驻留cache，但$B[k,j]$在两$j$变化时，就不得不换出cache。
+
+我们继续考虑下面这样一段blockified的矩阵乘法的计算过程。我们将矩阵$A$，$B$和$C$分成$b \times b$大小的块。
+
+```cpp
+for i = 0 : M - 1
+  for j = 0 : N - 1
+      for k = 0 : K - 1  // <-- fast changing dimension
+          (block C[i, j]) = (block A[i, k]) * (block B[k, j])  // s1
+```
 
 ## Hierarchical Partition and Data Movements
 
@@ -159,3 +184,7 @@ Fig. Shared meory blocking.
 1. [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM)
 1. [Programming Tensor Cores](https://vccvisualization.org/teaching/CS380/CS380_fall2021_lecture_26.pdf)
 1. [cutlass Warp-level Matrix Multiply instruction shape](https://github.com/NVIDIA/cutlass/blob/main/media/docs/functionality.md#warp-level-matrix-multiply-with-tensor-cores)
+1. [Computational Intensity of Matrix Multiplication](https://sites.cs.ucsb.edu/~gilbert/cs140/notes/ComputationalIntensityOfMatMul.pdf)
+1. [Lecture Notes on Parallel Scientific Computing](https://sites.cs.ucsb.edu/~tyang/class/140s14/slides/notes140.pdf)
+1. [CUDA Memory Hierarchy](http://thebeardsage.com/cuda-memory-hierarchy/)
+1. [RegDem: Increasing GPU Performance via Shared Memory Register Spilling](https://arxiv.org/pdf/1907.02894.pdf)
