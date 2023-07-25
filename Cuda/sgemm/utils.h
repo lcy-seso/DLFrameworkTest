@@ -17,6 +17,14 @@ __global__ void ConvertFp16ToFp32(float* out, const __half* in, int64_t numel) {
   }
 }
 
+__global__ void ConvertFp32ToFp16(__half* out, const float* in, int64_t numel) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid < numel) {
+    printf("[%d] = %.6f\n", tid, in[tid]);
+    out[tid] = __float2half(in[tid]);
+  }
+}
+
 __global__ void CheckDiff(const __half* data1, const __half* data2,
                           int64_t numel) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -26,10 +34,10 @@ __global__ void CheckDiff(const __half* data1, const __half* data2,
   }
 }
 
-__global__ void InitSeq(__half* data, int numel) {
+__global__ void InitSeq(float* data, int numel) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   if (tid < numel) {
-    data[tid] = __float2half(tid);
+    data[tid] = tid;
     // printf("%d: %f\n", tid, __half2float(data[tid]));
   }
 }

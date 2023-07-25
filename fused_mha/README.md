@@ -28,7 +28,7 @@ GPU utilization可以以occupancy来度量。***occupancy受限于并行线程�
 
 以我正在使用的A6000为例，通过device query可知，A6000每个block最大shared memory是48K，一个SM有100K shared memory。如果每个block把shared memory用满（48K），那么一个SM最多只能同时调度2个block。如果增大per-block shared memory用量，有可能导致occupancy降低。
 
->每一代硬件架构支持的每SM最大并发线程数不同，为了能达到理论上100%的occupancy，一个kernel在决定launch config时，block size应该至少被最大并发线程数整除。举例来说，A6000的每SM最大线程数是1536，那么block size选择256/512，计算任务的并发量足够，单kernel消耗的资源少，理论上有可能让SM上所有并发线程跑满。如果选择1024这也的block size，无法被1536整除，那么将无法达到100%的occupancy。
+>每一代硬件架构支持的每SM最大并发线程数不同，为了能达到理论上100%的occupancy，一个kernel在决定launch config时，block size应该至少被最大并发线程数整除。举例来说，A6000的每SM最大线程数是1536，那么block size选择256/512，计算任务的并发量足够，单kernel消耗的资源少，理论上有可能让SM上所有并发线程跑满。如果选择1024这样的block size，无法被1536整除，那么将无法达到100%的occupancy。
 
 $$occupancy = \frac{\text{active warps数目/SM}}{\text{最大可能active warp数目/SM}}$$
 
