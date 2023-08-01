@@ -11,6 +11,10 @@
     - [1. The Naive Kernel](#1-the-naive-kernel)
     - [2. Global Memory Coalescing](#2-global-memory-coalescing)
     - [3. Shared Memory Blocking](#3-shared-memory-blocking)
+  - [Cutlass TensorOpMultiplicand Layout的一些注解](#cutlass-tensoropmultiplicand-layout的一些注解)
+    - [对齐到访存的硬件参数](#对齐到访存的硬件参数)
+    - [Bank Conflict Free Shared Memory Access](#bank-conflict-free-shared-memory-access)
+    - [Put above Considerations Together](#put-above-considerations-together)
 - [Reference](#reference)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -71,6 +75,10 @@ for i = 0 : M - 1
       for k = 0 : K - 1  // <-- fast changing dimension
           (block C[i, j]) = (block A[i, k]) * (block B[k, j])  // s1
 ```
+
+- 计算量：$M_s \cdot N_s\cdot K \cdot 2$
+- 访存量：$(M_s + N_s) \cdot K \cdot 4 \text{bytes}$ (假设访问float32)
+- 计算访存比：$\frac{M_s \cdot N_s}{2(M_s + N_s)}=\frac{1}{2 \left(\frac{1}{N_s} +\frac{1}{M_s}\right)}$
 
 ## Hierarchical Partition and Data Movements
 
@@ -176,6 +184,57 @@ Fig. The optimized access pattern of kernel 1.
 Fig. Shared meory blocking.
 </p>
 
+## Cutlass TensorOpMultiplicand Layout的一些注解
+
+### 对齐到访存的硬件参数
+
+为了最大化硬件资源的使用（最大化访存带宽，最大化浮点数计算等），我们先来看看一些需要遵守的限制：
+
+1. 为了最大化利用访存带宽，固定使用128b向量化指令访问数据。当输入Tensor的元素类型不同是，一次访问读取的元素个数会不同：$$\text{kElementPerAccess} = \frac{128}{\text{ElementSize}}$$ (这里的ElementSize以bit数计数，half = 16, float32 = 32, float64 = 64)。
+1. 在shared memory上存储时，contiguous dimension应对齐到shared memory cache line 位宽：128 bytes。每次访问，**<ins>每个线程都以$\text{kAccessSiee}=128 \text{b}$向量化指令读写数据</ins>**，于是填满一个cache line需要$\text{kTileShapeContiguous}=8$这么多次访问（或者说，这么多个线程协作工作）:$$\text{kTileShapeContiguous}=\frac{\text{Shared Memory Cache Line Width (Bytes)}}{\text{Vectoried Access Width (bits)} / 8}=\frac{128}{128/8}=8$$
+
+### Bank Conflict Free Shared Memory Access
+
+shared meomory以4字节（默认4字节，可以配置成8字节）为一个bank，共32个bank。同一个warp中的线程访问不同位宽的数据时，会有不同行为：
+
+<font color=blue>Bank conflicts发生在处于同一个阶段中的合作线程之中，而不是一个warp的所有线程之间</font>。
+
+1. 每个线程访问shared memory中32b数据（两个半精度，一个单精度浮点数，每个线程访问1个bank）
+    - 访存在一个阶段完成（4个线程访问128b数据，共8组，**1024b**数据）。<font color=red>$\leftarrow$要避免连续的32个线程读写同一个bank</font>
+1. 每个线程访问shared memory中64b数据（四个半精度，两个单精度，一个双精度浮点数，每线程访问2个bank），访存在两个阶段完成：
+    - 前16个线程共访问**1024b**数据 <font color=red>$\leftarrow$要避免连续的16个线程读写同一个bank</font>
+    - 后16个线程共访问**1024b**数据
+1. <ins>每个线程访问shared memory中128b数据（八个半精度，四个单精度，两个双精度，每线程访问4个bank），**访存会在四个阶段完成**</ins>：
+    - 每阶段由8个线程共访问**1024b**数据  <font color=red>$\leftarrow$要避免连续的8个线程读写同一个bank</font>
+
+
+### Put above Considerations Together
+
+<p align="center">
+<img src="images/../figures/crosswise.png" width=60%>
+<p>
+
+我们从代码来看一下$\text{kCrosswise}$的行为：
+$$\text{kFactor}=\frac{\text{kTileShapeContiguous}*\text{kElementPerAccess}}{\mathbf{kCrosswise}}$$
+$\text{kCrosswise}$是以元素个数（不是bits数，不是bytes数）来计数，连续$\text{kCrosswise}$个元素为一组，将shared memory的一个cache line分成了$\text{kFactor}$组。有了上面的限制，我们来考虑strided dimension的大小。
+
+为了达到高效访问，shared memory layout中的contiguous dimension一定占据了cache line的整数倍大小，并且需要考虑到一个warp中的32个线程会协作并发地访问数据，于是当32个线程一起协作访问数据时，能跨越shared memory中4个cache line：
+$$\#\text{count}_1 = \frac{32}{\text{kTileShapeContiguous}}=4$$
+为了保证后续矩阵乘法在register上分块计算时，访问shared memory是bank conflict free的
+$$\#\text{count}_2 = \frac{\text{kTileShapeContiguous}}{\text{kFactor}} = \frac{\text{kTileShapeContiguous}*\text{kCrosswise}}{\text{kTileShapeContiguous}*\text{kElementPerAccess}}=\frac{\text{kCrosswise}}{\text{kElementPerAccess}}$$
+
+$\text{kTileShapeStride}$取$\text{count}_1=4$（固定值）和$\text{count}_2$中的较大值。从代码的注释看$\frac{\text{kCrosswise}}{\text{kElementPerAccess}}=\text{kTileShapeStride}$只有4和8两种取值（**？？**），想取到8必须通过设置$\frac{\text{kCrosswise}}{\text{kElementPerAccess}}=8$，那么我们可以反推出来如何设置$\text{kCrosswise}=8*\text{kElementPerAccess}$:
+
+||$\text{kElementPerAccess}$|$\text{kCrosswise}$|$\text{kCrosswise}$|
+|:--|:--|:--|:--|
+|half|$\frac{128}{16}=8$|$8*8=64$|$8*4=32$|
+|float32|$\frac{128}{32}=4$|$4*8=32$|$4*4=16$|
+|float64|$\frac{128}{64}=2$|$2*8=16$|$2*4=8$|
+
+<p align="center">
+<img src="figures/PitchLinearShape.png">
+</p>
+
 # Reference
 
 1. Huang, Jianyu, Chenhan D. Yu, and Robert A. van de Geijn. "[Implementing Strassen's Algorithm with CUTLASS on NVIDIA Volta GPUs](https://arxiv.org/pdf/1808.07984.pdf)." arXiv preprint arXiv:1808.07984 (2018).
@@ -188,3 +247,5 @@ Fig. Shared meory blocking.
 1. [Lecture Notes on Parallel Scientific Computing](https://sites.cs.ucsb.edu/~tyang/class/140s14/slides/notes140.pdf)
 1. [CUDA Memory Hierarchy](http://thebeardsage.com/cuda-memory-hierarchy/)
 1. [RegDem: Increasing GPU Performance via Shared Memory Register Spilling](https://arxiv.org/pdf/1907.02894.pdf)
+1. [CUDA GEMM 理论性能分析与 kernel 优化](https://zhuanlan.zhihu.com/p/441146275)
+1. [cutlass Tile Iterator](https://github.com/NVIDIA/cutlass/blob/main/media/docs/tile_iterator_concept.md)

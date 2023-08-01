@@ -68,16 +68,14 @@ __global__ void FillZeros(T* data, int num) {
   if (tid < num) data[tid] = static_cast<T>(0.);
 }
 
-template <typename T>
-void PrintValue(const T* data, int numel) {
+void PrintFloats(float* data, int numel) {
   // data is on the device
   std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(3);
 
-  T* h_data;
-  CudaCheck(cudaMallocHost((void**)&h_data, sizeof(T) * numel));
+  float* h_data;
+  CudaCheck(cudaMallocHost((void**)&h_data, sizeof(float) * numel));
   CudaCheck(
-      cudaMemcpy(h_data, data, sizeof(T) * numel, cudaMemcpyDeviceToHost));
-  std::cout << "[printValue] numel = " << numel << std::endl;
+      cudaMemcpy(h_data, data, sizeof(float) * numel, cudaMemcpyDeviceToHost));
 
   for (int i = 0; i < numel; ++i) {
     std::cout << i << ":" << h_data[i] << std::endl;
