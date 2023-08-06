@@ -74,10 +74,6 @@ __global__ void IterateAKernel(ElementType* source, ElementType* target) {
   BlockFragment fragment;
   fragment.clear();
 
-  if (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
-    printf("fragment size = %d\n", fragment.size());
-  }
-
   ElementType* tmp_block;
   for (uint bkIdx = 0; bkIdx < WholeShape::kK; bkIdx += ThreadblockShape::kK) {
     tmp_block = source + cRow * ThreadblockShape::kM * WholeShape::kK + bkIdx;
@@ -101,31 +97,9 @@ __global__ void IterateAKernel(ElementType* source, ElementType* target) {
     sIterator.store(fragment);
   }
 
-  //   if (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
-  //   printf("\nAll threads dump all the elements:\n");
-  // }
-  // cutlass::debug::dump_fragment(fragment);
-  // break;
-  if (threadIdx.x == 0 && blockIdx.x == 0)
-    printf("\nDump all the elements with a stride of 8:\n");
-  cutlass::debug::dump_shmem(smem_buffer.data(),
-                             ThreadblockShape::kM * ThreadblockShape::kK,
-                             ThreadblockShape::kM);
-
-  // target iterator for shared memory tiles
-  //   using SmemTileIterator =
-  //   cutlass::transform::threadblock::RegularTileIterator<
-  //       cutlass::MatrixShape<ThreadblockShape::kM, ThreadblockShape::kK>,
-  //       ElementType, typename Mma::LayoutA, 1, ThreadMap>;
-
-  //   using BlockFragment = typename GmemTileIterator::Fragment;
-
-  //   BlockFragment fragmentA;
-
-  //   typename GmemTileIterator::Params ParamsA({WholeShape::kK});
-
-  //   cutlass::Coord<2> Extent =
-  //       cutlass::make_Coord(WholeShape::kM, WholeShape::kK);
+  if (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+    cutlass::debug::dump_shmem(smem_buffer.raw_data(),
+                               ThreadblockShape::kM * ThreadblockShape::kK);
 }
 
 template <typename WholeShape /*tile on the low-speed memory*/,

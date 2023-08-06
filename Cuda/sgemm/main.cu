@@ -43,8 +43,8 @@ int main(int argc, char** argv) {
   std::cout << std::fixed << std::showpoint;
   std::cout << std::setprecision(5);
 
-  const int m = 32;
-  const int n = 32;
+  const int m = 64;
+  const int n = 64;
   const int k = 64;
 
   int64_t size_A = m * k;
@@ -128,14 +128,14 @@ int main(int argc, char** argv) {
 
   // warp-level mma API.
   // compute
-  using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
-      WarpShape /*warp-tile shape*/,
-      InstructionShape /*tensor core instruction shape*/,
-      Element /*element type of A*/,
-      SLayoutA /*the layout of the A tile on shared memory*/,
-      Element /*element type of B*/,
-      SLayoutB /*the layout of the B tile on the shared memory*/,
-      ElementC /*type of accumulator*/, SLayoutC>::Type;
+  // using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
+  //     WarpShape /*warp-tile shape*/,
+  //     InstructionShape /*tensor core instruction shape*/,
+  //     Element /*element type of A*/,
+  //     SLayoutA /*the layout of the A tile on shared memory*/,
+  //     Element /*element type of B*/,
+  //     SLayoutB /*the layout of the B tile on the shared memory*/,
+  //     ElementC /*type of accumulator*/, SLayoutC>::Type;
 
   IterateATest<WholeShape, ThreadBlockShape, WarpShape, SLayoutA>(
       reinterpret_cast<cutlass::half_t*>(dA_fp16),
