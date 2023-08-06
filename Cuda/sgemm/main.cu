@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   std::cout << std::fixed << std::showpoint;
   std::cout << std::setprecision(5);
 
-  const int m = 128;
+  const int m = 64;
   const int n = 64;
   const int k = 64;
 
@@ -55,10 +55,14 @@ int main(int argc, char** argv) {
   int blocks = CEIL_DIV(size_A, threads);
 
   __half *dA_fp16, *dB_fp16, *dC_fp16_base, *dC_fp16;
+  __half* dA_fp16_2;
 
   CudaCheck(cudaMalloc(&dA_fp16, size_A * sizeof(__half)));
+  CudaCheck(cudaMalloc(&dA_fp16_2, size_A * sizeof(__half)));
+
   CudaCheck(cudaMalloc(&dB_fp16, size_B * sizeof(__half)));
   InitHalfs<<<blocks, threads>>>(dA_fp16, size_A);
+  FillZeros<<<blocks, threads>>>(dA_fp16_2, size_A);
   //   std::cout << "Input matrix A: " << std::endl << std::endl;
   //   PrintHalfs(dA_fp16, size_A);
 
@@ -86,9 +90,12 @@ int main(int argc, char** argv) {
   using WholeShape = cutlass::gemm::GemmShape<m, n, k>;
 
   // thread-block tile shape.
-  const int M_s = 64;
-  const int N_s = 32;
-  const int K_s = 64;
+  // const int M_s = 32;
+  // const int N_s = 32;
+  // const int K_s = 64;
+  const int M_s = m;
+  const int N_s = n;
+  const int K_s = k;
   using ThreadBlockShape = cutlass::gemm::GemmShape<M_s, N_s, K_s>;
 
   // warp-tile shape.
@@ -99,7 +106,7 @@ int main(int argc, char** argv) {
 
   // tensor core instruction shape.
   const int gemm_threads = (M_s / M_w) * (N_s / N_w) * 32;
-  std::cout << "threads = " << gemm_threads << std::endl;
+  // std::cout << "threads = " << gemm_threads << std::endl;
 
   const int M_i = 16;
   const int N_i = 8;
@@ -109,30 +116,37 @@ int main(int argc, char** argv) {
 
   using Element = cutlass::half_t;
   using ElementC = cutlass::half_t;
-  // Crosswise means the contiguous dimension is K dimension, the strided
-  // dimension is M or N dimension.
+
+  const int crosswise = 32;
+  // two contiguous dimensions occupy a single shared memory cache line
+  // The Target Layout
   using SLayoutA = cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
-      cutlass::sizeof_bits<Element>::value, 64 /*crosswise*/>;
+      cutlass::sizeof_bits<Element>::value, crosswise>;
   using SLayoutB = cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<
-      cutlass::sizeof_bits<Element>::value, 64>;
+      cutlass::sizeof_bits<Element>::value, crosswise>;
   using SLayoutC = cutlass::layout::RowMajor;
 
   // warp-level mma API.
-  using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
-      WarpShape /*warp-tile shape*/,
-      InstructionShape /*tensor core instruction shape*/,
-      Element /*element type of A*/,
-      SLayoutA /*the layout of the A tile on shared memory*/,
-      Element /*element type of B*/,
-      SLayoutB /*the layout of the B tile on the shared memory*/,
-      ElementC /*type of accumulator*/, SLayoutC>::Type;
+  // compute
+  // using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
+  //     WarpShape /*warp-tile shape*/,
+  //     InstructionShape /*tensor core instruction shape*/,
+  //     Element /*element type of A*/,
+  //     SLayoutA /*the layout of the A tile on shared memory*/,
+  //     Element /*element type of B*/,
+  //     SLayoutB /*the layout of the B tile on the shared memory*/,
+  //     ElementC /*type of accumulator*/, SLayoutC>::Type;
 
-  CutlassGemm<MmaTensorOp, WholeShape, ThreadBlockShape>(
-      reinterpret_cast<cutlass::half_t*>(dC_fp16),
+  IterateATest<WholeShape, ThreadBlockShape, WarpShape, SLayoutA>(
       reinterpret_cast<cutlass::half_t*>(dA_fp16),
-      reinterpret_cast<cutlass::half_t*>(dB_fp16));
+      reinterpret_cast<cutlass::half_t*>(dA_fp16_2));
 
-  blocks = CEIL_DIV(size_C, threads);
+  // CutlassGemm<MmaTensorOp, WholeShape, ThreadBlockShape>(
+  //     reinterpret_cast<cutlass::half_t*>(dC_fp16),
+  //     reinterpret_cast<cutlass::half_t*>(dA_fp16),
+  //     reinterpret_cast<cutlass::half_t*>(dB_fp16));
+
+  // blocks = CEIL_DIV(size_C, threads);
   // CheckDiff<<<blocks, threads>>>(dC_fp16_base, dC_fp16, size_C);
 
   //   cudaFree(dA_fp32);
