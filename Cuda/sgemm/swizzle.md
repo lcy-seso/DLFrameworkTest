@@ -8,8 +8,10 @@
   - [Swizzled Layout](#swizzled-layout)
   - [Cutlass TensorOpMultiplicand Layout的一些注解](#cutlass-tensoropmultiplicand-layout的一些注解)
   - [一个具体的例子](#一个具体的例子)
-    - [Global Memory Layout](#global-memory-layout)
-    - [Shared Memory Swizzled Layout](#shared-memory-swizzled-layout)
+    - [Layout](#layout)
+      - [Global Memory Layout](#global-memory-layout)
+      - [Shared Memory Swizzled Layout](#shared-memory-swizzled-layout)
+    - [Iterator and ThreadMap](#iterator-and-threadmap)
 - [Reference](#reference)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -116,19 +118,11 @@ $\text{kTileShapeStride}$取$\text{count}_1=4$（固定值）和$\text{count}_2$
 <img src="figures/cutlass-swizzled.png" width=80%>
 </p>
 
-|参数名|解释|取值示例<br>（$A$,$B$,$C$均为half）|Storage|
-|:--|:--|:--:|:--|
-|`WholeShape`|矩阵乘的大小|<32,32,64>|Global Memory|
-|`ThreadBlockShape`|每个ThreadBlock中所有线程计算的矩阵乘大小|<32,32,64>|Shared Memory|
-|`WarpShape`|一个Warp计算的矩阵乘的大小|<32,32,16>|Register|
-|`InstructionShape`|wmma操作的矩阵乘大小|<16,8,8>|Register|
+### Layout
 
-一个CTA中所有线程协作将一块大小为$M \times N$的数据从源（Global Memory）搬运到目标（Shared Memory），需要定义：
+`RowMajor`/`ColumnMajor`都是`PitchLinear` layout的一个具体例子，由contiguous dimension和strided dimension两个维度描述。
 
-1. 源数据的Layout，目标数据的Layout。目标数据存储在shared memory上时需要特殊的swizzled layout来避免warp中的线程合作计算时产生bank confilit。
-1. 源数据的load iterator，目标数据的store iterator
-
-### Global Memory Layout
+#### Global Memory Layout
 
 RowMajor, ColumnMajor
 
@@ -139,48 +133,97 @@ RowMajor, ColumnMajor
 |行优先时|列|行|
 |列优先时|行|列|
 
-### Shared Memory Swizzled Layout
+#### Shared Memory Swizzled Layout
 
 这里只讨论目前用到的两种swizzled layout，要注意，这两种Layout在cutlass中都只为`128b`向量化访问而优化，也就是说一个线程一次访存读取`128b`数据（一次读取8个半精度，4个单精度，2个双精度）。
 
 1. `RowMajorTensorOpMultiplicandCrosswise<ElementInBits,Crosswise>`
 2. `ColumnMajorTensorOpMultiplicandCrosswise<ElementInBits,Crosswise>`
 
+### Iterator and ThreadMap
+
+`PitchLinearWarpRakedThreadMap`是tensor core mma op使用的一个`ThreadMap`，使用时我们需要指定以下信息来特化这个类：
+
+1. **Shape**: 在声明`PitchLinearWarpRakedThreadMap`时需要指定一个`Shape`，这个`Shape`是用cutlass中Layout concept表示。从类名看仅能使用`PitchLinearLayout`（包括`RowMajor`和`ColumnMajor`）；
+1. **WarpArrangement**: 指定warp的线程组织：$4 \times 8$或者$8 \times 4$。要注意这里指定线程组织的时候也是依赖于cutlass中`PitchLinear` layout这一concept，于是线程组织也"继承"了PitchLinear的含义，被分成了`contiguous dimension`和`strided dimension`。于是Warp的contiguous dimension被映射到`Shape`的contiguous dimension，warp的strided dimension被映射到`Shape`的strided dimension。
+1. **Threads**: 一个CTA中一共有多少个线程
+1. **ElementPerAccess**: 每个线程一次访存，读取128b数据，需要根据访问元素的类型换算成元素个数。
+
+`Iterator`：控制结构静态计算，指针和extent在构建iterator的时候指定。
 ```cpp
-using ThreadMap = cutlass::transform::PitchLinearWarpRakedThreadMap<
-    cutlass::layout::PitchLinearShape<ThreadblockShape::kM,  /*contiguous*/
-                                      ThreadblockShape::kK>, /*tile shape*/
-    kThreads /*num_threads*/,
-    cutlass::layout::PitchLinearShape<4, 8> /*warp arrangement*/,
-    element_per_access /*element per access*/>;
+/// Regular tile iterator using a precomputed control structure to minimize register liveness
+/// and integer arithmetic.
+///
+/// Layout is assumed to be invariant at the time the precomputed "Params" object is constructed.
+///
+/// Base pointer and tensor extents may be specified at the time the iterator is constructed.
+/// Subsequently, they are assumed to be immutable.
+///
+/// Adding a logical coordinate offset may be performed at the time the iterator is constructed.
+/// Subsequent additions to logical coordinate offset may be performed but are relatively expensive.
+///
+/// Visitation order is intended to first visit a "residual" tile that may be partially full in
+/// both the advance dimension and the steady-state dimension. This is assumed to be the last
+/// tile in the iteration sequence. Advancing an iterator that has just been constructed moves to
+/// the first tile that is full in the advance dimension and recomputes predicates. Subsequent
+/// accesses may be performed without updating internal predicates and are efficient in terms of
+/// live register state and pointer arithmetic instructions.
+///
+/// To be efficient, this assumes the iterator will be dereferenced and advanced at least once
+/// outside any looping structure to minimize integer arithmetic. 
+///
+/// Acceses out of bounds are safe so long as `clear_mask()` is called prior to dereferencing
+/// the iterator.
+///
+///
+/// Example:
+///
+/// An efficient pipeline structure may be constructed as follows:
+///
+template <typename Iterator>
+__global__ void kernel(
+  typename Iterator::Params params, 
+  typename Iterator::Element *ptr,
+  TensorCoord extent) {
+
+  typename Iterator::Fragment fragment;
+
+  TensorCoord threadblock_offset(0, 0);
+
+  Iterator iter(params, ptr, extent, threadIdx.x, threadblock_offsets);
+
+
+  fragment = *iter;        // load "residue" tile first
+  ++iter;                  // advance to first "steady state" tile and update internal masks
+
+
+  #pragma unroll
+  for (int i = Remaining - 1; i >= 0; --i) {
+
+    f(fragment);
+
+    if (!i) {
+      iter.clear_mask();   // light-weight operation to clear masks - subsequent loads become NO-OPs.
+    }
+ 
+    fragment = *iter;      // load tile during "steady state" phase
+    ++iter;                // advance to next tile - lightweight due to steady-state masks
+  }
+}
+
+void host(TensorView<Element, 2, layout::PitchLinear> view) {
+
+  using Iterator = transform::threadblock::PredicatedTileIterator;
+
+  typename Iterator::Params params(view.layout());
+
+  kernel<Iterator>(params, view.data());
+}
+
 ```
 
-`PitchLinearWarpRakedThreadMap`是tenosr core kernels使用的ThreadMap类。在特化这个模板类时，对应上面的代码需要指定以下参数：
-1. 搬运数据的大小
-1. CTA中的线程数
-1. warp中线程布局的形状
-1. 每个线程搬运多少个元素：**注意，这里是以元素个数计数，因为我们使用的Layout为128b访存进行了优化元素个数为**:
-    
-    ```cpp
-    const int kAccessInBits = 128;
-    const int element_per_access =
-        kAccessInBits / cutlass::sizeof_bits<ElementType>::value;
-    ```
-
-```cpp
-template <
-  typename Shape,
-  typename Element,
-  typename Layout,
-  int AdvanceRank,
-  typename ThreadMap,
-  int AccessSize = ThreadMap::kElementsPerAccess,
-  bool Gather = false
->
-class PredicatedTileIterator;
-```
-
-```PredicatedTileIterator```会针对各种Layout进行特化。**每个线程读到一个二维的数据，但是被flatten成一维Array存储在一个Fragment中**（cutlass中的Fragment是存储在寄存器上的Array），一个Fragment大小按照如下方式计算：
+`PredicatedTileIterator`： **use a precomputed control structure to minimize register liveness**
+**每个线程读到一个二维的数据，但是被flatten成一维Array存储在一个Fragment中**（cutlass中的Fragment是存储在寄存器上的Array），一个Fragment大小按照如下方式计算：
 
 ```cpp
 // Fragment object to be loaded or stored
@@ -228,6 +271,44 @@ using Iterations = layout::PitchLinearShape<
   Detail::WarpAccessIterations::kContiguous / Detail::kWarpsContiguous,
   Detail::WarpAccessIterations::kStrided / Detail::kWarpsStrided
 >;
+```
+
+
+|参数名|解释|取值示例<br>（$A$,$B$,$C$均为half）|Storage|
+|:--|:--|:--:|:--|
+|`WholeShape`|矩阵乘的大小|<32,32,64>|Global Memory|
+|`ThreadBlockShape`|每个ThreadBlock中所有线程计算的矩阵乘大小|<32,32,64>|Shared Memory|
+|`WarpShape`|一个Warp计算的矩阵乘的大小|<32,32,16>|Register|
+|`InstructionShape`|wmma操作的矩阵乘大小|<16,8,8>|Register|
+
+一个CTA中所有线程协作将一块大小为$M \times N$的数据从源（Global Memory）搬运到目标（Shared Memory），需要定义：
+
+1. 源数据的Layout，目标数据的Layout。目标数据存储在shared memory上时需要特殊的swizzled layout来避免warp中的线程合作计算时产生bank confilit。
+2. 源数据的load iterator，目标数据的store iterator
+
+```cpp
+using ThreadMap = cutlass::transform::PitchLinearWarpRakedThreadMap<
+    cutlass::layout::PitchLinearShape<ThreadblockShape::kM,  /*contiguous*/
+                                      ThreadblockShape::kK>, /*tile shape*/
+    kThreads /*num_threads*/,
+    cutlass::layout::PitchLinearShape<4, 8> /*warp arrangement*/,
+    element_per_access /*element per access*/>;
+```
+
+`RegularTileIterator`是与`TensorOpMultiplicandCongruous`配合使用的一个iterator
+
+
+```cpp
+template <
+  typename Shape,
+  typename Element,
+  typename Layout,
+  int AdvanceRank,
+  typename ThreadMap,
+  int AccessSize = ThreadMap::kElementsPerAccess,
+  bool Gather = false
+>
+class PredicatedTileIterator;
 ```
 
 我们来运行cutlass [visualize_layout](https://github.com/NVIDIA/cutlass/tree/main/examples/03_visualize_layout)这个例子，来可视化swizzling之后的layout：
