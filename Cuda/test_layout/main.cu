@@ -21,58 +21,43 @@
 #include "tile_loader.h"
 
 template <typename Element, typename LOAD>
-__global__ void TestTileLoader(LOAD load, Element* src, int ld_size,
-                               int stride) {
+__global__ void TestTileLoader(LOAD load, Element* src) {
   extern __shared__ Element shared_storage[];
 
   int tid = threadIdx.y * blockDim.x + threadIdx.x;
 
-  load.template load(src, shared_storage, ld_size, stride, tid);
+  load.template load(src, shared_storage, tid);
 }
 
-int main() {
-  // Row-major has a layout of [strided x lda]-shaped matrix.
-  const int row = 32;
-  const int col = 8;
-
-  // const int row = 8;
-  // const int col = 32;
-
+int TestRowMajor() {
   using Element = cutlass::half_t;
+  const int row = 8;
+  const int col = 32;
+  using Layout = cutlass::layout::RowMajor;
 
-  // ld for leading dimension:
-  // ld = 1: row-major, ld = 0: column-major
-  // const int ld = 1;
-  // using Layout = cutlass::layout::RowMajor;
-  using Layout = cutlass::layout::ColumnMajor;
-  const int ld = 0;
   cutlass::HostTensor<Element, Layout> matrix({row /*ld*/, col /*strided*/});
   cutlass::reference::host::BlockFillSequential(matrix.host_data(),
                                                 matrix.capacity());
   // Dump the matrix.
-  //   std::cout << "Matrix:\n" << matrix.host_view() << "\n";
+  // std::cout << "Matrix:\n" << matrix.host_view() << "\n";
 
   // Copy the matrix to the device.
   matrix.sync_device();
 
-  dim3 grid(1, 1);
-  dim3 block(32, 1, 1);
-
   int smem_size = int(sizeof(Element) * row * col);
-  const int kAccessInBits = 128;
   const int kThreads = 32;
-  const int kElementPerAccess =
-      kAccessInBits / cutlass::sizeof_bits<Element>::value;
+  dim3 grid(1, 1);
+  dim3 block(kThreads, 1, 1);
 
-  const int ld_size = (ld ? col : row);
-  const int stride = (ld ? row : col);
-  std::cout << "leading dimension size: " << ld_size << "; stride: " << stride
-            << std::endl;
+  // row-major to column-major
+  R2CTileLoader<row, col, Element, kThreads> load1(row, col);
+  TestTileLoader<Element, decltype(load1)>
+      <<<grid, block, smem_size, 0>>>(load1, matrix.device_ref().data());
 
-  // column-major
-  TileLoader<row, col, ld, Element, kThreads> load(row, col);
-  TestTileLoader<Element, decltype(load)><<<grid, block, smem_size, 0>>>(
-      load, matrix.device_ref().data(), ld_size, stride);
+  // row-major to row-major
+  R2RTileLoader<row, col, Element, kThreads> load2(row, col);
+  TestTileLoader<Element, decltype(load2)>
+      <<<grid, block, smem_size, 0>>>(load2, matrix.device_ref().data());
 
   cudaError_t result = cudaDeviceSynchronize();
   if (result != cudaSuccess) {
@@ -80,4 +65,48 @@ int main() {
   }
 
   return (result == cudaSuccess ? 0 : -1);
+}
+
+int TestColumnMajor() {
+  using Element = cutlass::half_t;
+
+  const int row = 32;
+  const int col = 8;
+  using Layout = cutlass::layout::ColumnMajor;
+
+  cutlass::HostTensor<Element, Layout> matrix({row, col});
+  cutlass::reference::host::BlockFillSequential(matrix.host_data(),
+                                                matrix.capacity());
+  // Dump the matrix.
+  // std::cout << "Matrix:\n" << matrix.host_view() << "\n";
+
+  // Copy the matrix to the device.
+  matrix.sync_device();
+
+  int smem_size = int(sizeof(Element) * row * col);
+  const int kThreads = 32;
+  dim3 grid(1, 1);
+  dim3 block(kThreads, 1, 1);
+
+  // column-major to column-major
+  C2CTileLoader<row, col, Element, kThreads> load1(row, col);
+  TestTileLoader<Element, decltype(load1)>
+      <<<grid, block, smem_size, 0>>>(load1, matrix.device_ref().data());
+
+  // column-major to column-major
+  C2RTileLoader<row, col, Element, kThreads> load2(row, col);
+  TestTileLoader<Element, decltype(load2)>
+      <<<grid, block, smem_size, 0>>>(load2, matrix.device_ref().data());
+
+  cudaError_t result = cudaDeviceSynchronize();
+  if (result != cudaSuccess) {
+    std::cout << "Failed" << std::endl;
+  }
+
+  return (result == cudaSuccess ? 0 : -1);
+}
+
+int main() {
+  TestRowMajor();
+  TestColumnMajor();
 }
