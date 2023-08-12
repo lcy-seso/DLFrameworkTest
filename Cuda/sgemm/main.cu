@@ -44,8 +44,8 @@ int main(int argc, char** argv) {
   std::cout << std::setprecision(5);
 
   const int m = 64;
-  const int n = 64;
-  const int k = 64;
+  const int n = 128;
+  const int k = 128;
 
   int64_t size_A = m * k;
   int64_t size_B = k * n;
@@ -55,17 +55,10 @@ int main(int argc, char** argv) {
   int blocks = CEIL_DIV(size_A, threads);
 
   __half *dA_fp16, *dB_fp16, *dC_fp16_base, *dC_fp16;
-  __half* dA_fp16_2;
 
   CudaCheck(cudaMalloc(&dA_fp16, size_A * sizeof(__half)));
-  CudaCheck(cudaMalloc(&dA_fp16_2, size_A * sizeof(__half)));
-
   CudaCheck(cudaMalloc(&dB_fp16, size_B * sizeof(__half)));
   InitHalfs<<<blocks, threads>>>(dA_fp16, size_A);
-  FillZeros<<<blocks, threads>>>(dA_fp16_2, size_A);
-  //   std::cout << "Input matrix A: " << std::endl << std::endl;
-  //   PrintHalfs(dA_fp16, size_A);
-
   InitHalfs<<<blocks, threads>>>(dB_fp16, size_B);
 
   //   std::cout << std::endl
@@ -128,30 +121,22 @@ int main(int argc, char** argv) {
 
   // warp-level mma API.
   // compute
-  // using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
-  //     WarpShape /*warp-tile shape*/,
-  //     InstructionShape /*tensor core instruction shape*/,
-  //     Element /*element type of A*/,
-  //     SLayoutA /*the layout of the A tile on shared memory*/,
-  //     Element /*element type of B*/,
-  //     SLayoutB /*the layout of the B tile on the shared memory*/,
-  //     ElementC /*type of accumulator*/, SLayoutC>::Type;
+  using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<
+      WarpShape /*warp-tile shape*/,
+      InstructionShape /*tensor core instruction shape*/,
+      Element /*element type of A*/,
+      SLayoutA /*the layout of the A tile on shared memory*/,
+      Element /*element type of B*/,
+      SLayoutB /*the layout of the B tile on the shared memory*/,
+      ElementC /*type of accumulator*/, SLayoutC>::Type;
 
-  IterateATest<WholeShape, ThreadBlockShape, WarpShape, SLayoutA>(
+  CutlassGemm<MmaTensorOp, WholeShape, ThreadBlockShape>(
+      reinterpret_cast<cutlass::half_t*>(dC_fp16),
       reinterpret_cast<cutlass::half_t*>(dA_fp16),
-      reinterpret_cast<cutlass::half_t*>(dA_fp16_2));
+      reinterpret_cast<cutlass::half_t*>(dB_fp16));
 
-  // CutlassGemm<MmaTensorOp, WholeShape, ThreadBlockShape>(
-  //     reinterpret_cast<cutlass::half_t*>(dC_fp16),
-  //     reinterpret_cast<cutlass::half_t*>(dA_fp16),
-  //     reinterpret_cast<cutlass::half_t*>(dB_fp16));
-
-  // blocks = CEIL_DIV(size_C, threads);
-  // CheckDiff<<<blocks, threads>>>(dC_fp16_base, dC_fp16, size_C);
-
-  //   cudaFree(dA_fp32);
-  //   cudaFree(dB_fp32);
-  //   cudaFree(dC_fp32);
+  blocks = CEIL_DIV(size_C, threads);
+  CheckDiff<<<blocks, threads>>>(dC_fp16_base, dC_fp16, size_C);
 
   cudaFree(dA_fp16);
   cudaFree(dB_fp16);
