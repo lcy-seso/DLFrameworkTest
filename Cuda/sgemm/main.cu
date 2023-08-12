@@ -1,43 +1,10 @@
 #include <assert.h>
 
-#include <iomanip>
 #include <iostream>
 
-#include "../cuda_utils.cuh"
 #include "cublass_gemm.h"
+#include "cuda_utils.cuh"
 #include "cutlass_warp_gemm.cuh"
-
-namespace {
-__global__ void InitHalfs(__half* data, int64_t numel) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid < numel) {
-    data[tid] = __float2half(tid / 1000.);
-    // printf("[%d] = %.4f\n", tid, __half2float(data[tid]));
-  }
-}
-
-void PrintHalfs(const __half* data, int64_t numel) {
-  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(3);
-
-  float* d_data;
-  CudaCheck(cudaMalloc((void**)&d_data, sizeof(float) * numel));
-  const int threads = 128;
-  int blocks = CEIL_DIV(numel, threads);
-  ConvertFp16ToFp32<<<blocks, threads>>>(d_data, data, numel);
-
-  float* h_data;
-  CudaCheck(cudaMallocHost((void**)&h_data, sizeof(float) * numel));
-  CudaCheck(cudaMemcpy(h_data, d_data, sizeof(float) * numel,
-                       cudaMemcpyDeviceToHost));
-
-  for (int i = 0; i < numel; ++i) {
-    std::cout << i << ":" << h_data[i] << std::endl;
-  }
-
-  CudaCheck(cudaFree(d_data));
-  CudaCheck(cudaFreeHost(h_data));
-}
-}  // namespace
 
 int main(int argc, char** argv) {
   std::cout << std::fixed << std::showpoint;
