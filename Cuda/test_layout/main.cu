@@ -31,45 +31,42 @@ __global__ void TestTileLoader(LOAD load, Element* src, int ld_size,
 }
 
 int main() {
-  // Row-major has a layout of [strided x lda]-shaped matrix.
-  const int row = 32;
-  const int col = 8;
-
-  // const int row = 8;
-  // const int col = 32;
-
   using Element = cutlass::half_t;
 
   // ld for leading dimension:
   // ld = 1: row-major, ld = 0: column-major
-  // const int ld = 1;
-  // using Layout = cutlass::layout::RowMajor;
-  using Layout = cutlass::layout::ColumnMajor;
-  const int ld = 0;
+
+  // Row-major has a layout of [strided x lda]-shaped matrix.
+  // const int row = 32;
+  // const int col = 8;
+  // using Layout = cutlass::layout::ColumnMajor;
+  //  const int ld = 0;
+
+  const int row = 8;
+  const int col = 32;
+  using Layout = cutlass::layout::RowMajor;
+  const int ld = 1;
+
   cutlass::HostTensor<Element, Layout> matrix({row /*ld*/, col /*strided*/});
   cutlass::reference::host::BlockFillSequential(matrix.host_data(),
                                                 matrix.capacity());
   // Dump the matrix.
-  //   std::cout << "Matrix:\n" << matrix.host_view() << "\n";
+  std::cout << "Matrix:\n" << matrix.host_view() << "\n";
 
   // Copy the matrix to the device.
   matrix.sync_device();
 
-  dim3 grid(1, 1);
-  dim3 block(32, 1, 1);
-
   int smem_size = int(sizeof(Element) * row * col);
-  const int kAccessInBits = 128;
   const int kThreads = 32;
-  const int kElementPerAccess =
-      kAccessInBits / cutlass::sizeof_bits<Element>::value;
 
   const int ld_size = (ld ? col : row);
   const int stride = (ld ? row : col);
-  std::cout << "leading dimension size: " << ld_size << "; stride: " << stride
-            << std::endl;
+  std::cout << "leading dimension size: " << ld_size << ";" << std::endl
+            << "stride: " << stride << ";" << std::endl;
 
   // column-major
+  dim3 grid(1, 1);
+  dim3 block(kThreads, 1, 1);
   TileLoader<row, col, ld, Element, kThreads> load(row, col);
   TestTileLoader<Element, decltype(load)><<<grid, block, smem_size, 0>>>(
       load, matrix.device_ref().data(), ld_size, stride);

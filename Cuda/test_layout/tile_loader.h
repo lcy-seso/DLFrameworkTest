@@ -48,8 +48,11 @@ struct TileLoader {
           kWarpArrangeContiguous, kWarpArrangeStrided> /*warp arrangement*/,
       kAccessInBits / kElmentBits>;
 
-  using GTileShape = cutlass::layout::PitchLinearShape<ld_size, stride>;
-  using GLayout = cutlass::layout::PitchLinear;
+  using GTileShape = cutlass::MatrixShape<kRow, kCol>;
+  using GLayout = cutlass::layout::RowMajor;
+  //   using GTileShape = cutlass::layout::PitchLinearShape<ld_size, stride>;
+  //   using GLayout = cutlass::layout::PitchLinear;
+
   using GmemIterator = cutlass::transform::threadblock::PredicatedTileIterator<
       GTileShape, Element, GLayout, 1 /*AdvanceRank*/, ThreadMap>;
 
@@ -66,11 +69,11 @@ struct TileLoader {
       SharedMemoryCacheLineWidth / (kAccessInBits / kElmentBits);
   static const int crosswise = count2 > ld_size ? count1 : count2;
 
-  // using SLayout =
-  // cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
-  //     cutlass::sizeof_bits<Element>::value, crosswise>;
-  using SLayout = cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<
+  using SLayout = cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
       cutlass::sizeof_bits<Element>::value, crosswise>;
+  //   using SLayout =
+  //   cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<
+  //       cutlass::sizeof_bits<Element>::value, crosswise>;
   using SmemIterator = cutlass::transform::threadblock::RegularTileIterator<
       cutlass::MatrixShape<kRow, kCol>, Element, SLayout, 1, ThreadMap>;
 
@@ -80,7 +83,7 @@ struct TileLoader {
 
   __device__ void load(Element* src, Element* trg, int ld, int stride,
                        int tid) const {
-    typename GmemIterator::Params params(GLayout::packed({ld, stride}));
+    typename GmemIterator::Params params(GLayout::packed({stride, ld}));
     // Construct the global iterator and load the data to the fragments.
     GmemIterator gmem_iterator(params, src, {row_size, col_size}, tid);
 
