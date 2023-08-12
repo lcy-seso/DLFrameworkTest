@@ -20,53 +20,32 @@
 #include "cutlass/util/tensor_view_io.h"
 #include "tile_loader.h"
 
-template <typename Element, typename GmemIterator, typename SmemIterator,
-          const int row, const int col>
-__global__ void load(typename GmemIterator::Params params, Element* data) {
-  extern __shared__ Element shared_storage[];
-
-  // Construct the global iterator and load the data to the fragments.
-  int tb_thread_id = threadIdx.y * blockDim.x + threadIdx.x;
-
-  GmemIterator gmem_iterator(params, data, {row, col}, tb_thread_id);
-
-  typename GmemIterator::Fragment frag;
-  frag.clear();
-
-  // load from source
-  gmem_iterator.load(frag);
-
-  SmemIterator smem_iterator(
-      typename SmemIterator::TensorRef(
-          {shared_storage, SmemIterator::Layout::packed({row, col})}),
-      tb_thread_id);
-  // store to target
-  smem_iterator.store(frag);
-
-  // Call dump_shmem() with different parameters.
-  if (threadIdx.x == 0 && blockIdx.x == 0) printf("\nDump all the elements:\n");
-  cutlass::debug::dump_shmem(shared_storage, row * col);
-}
-
 template <typename Element, typename LOAD>
-__global__ void TestTileLoader(LOAD load, Element* src) {
+__global__ void TestTileLoader(LOAD load, Element* src, int ld_size,
+                               int stride) {
   extern __shared__ Element shared_storage[];
 
   int tid = threadIdx.y * blockDim.x + threadIdx.x;
 
-  load.template load(src, shared_storage, tid);
+  load.template load(src, shared_storage, ld_size, stride, tid);
 }
 
 int main() {
   // Row-major has a layout of [strided x lda]-shaped matrix.
-  const int row = 128;
+  const int row = 32;
   const int col = 8;
 
-  int numel = row * col;
+  // const int row = 8;
+  // const int col = 32;
 
   using Element = cutlass::half_t;
-  //   using Layout = cutlass::layout::RowMajor;
+
+  // ld for leading dimension:
+  // ld = 1: row-major, ld = 0: column-major
+  // const int ld = 1;
+  // using Layout = cutlass::layout::RowMajor;
   using Layout = cutlass::layout::ColumnMajor;
+  const int ld = 0;
   cutlass::HostTensor<Element, Layout> matrix({row /*ld*/, col /*strided*/});
   cutlass::reference::host::BlockFillSequential(matrix.host_data(),
                                                 matrix.capacity());
@@ -79,54 +58,23 @@ int main() {
   dim3 grid(1, 1);
   dim3 block(32, 1, 1);
 
-  int smem_size = int(sizeof(Element) * numel);
+  int smem_size = int(sizeof(Element) * row * col);
   const int kAccessInBits = 128;
   const int kThreads = 32;
   const int kElementPerAccess =
       kAccessInBits / cutlass::sizeof_bits<Element>::value;
 
-  const int ld = row;
-  const int stride = col;
-  // Define a global iterator, a shared iterator and their thread map.
-  using ThreadMap = cutlass::transform::PitchLinearWarpRakedThreadMap<
-      cutlass::layout::PitchLinearShape<ld /*contiguous dim*/, stride>,
-      kThreads /*threads*/,
-      cutlass::layout::PitchLinearShape<8 /*contiguous dim*/,
-                                        4> /*warp arrangement*/,
-      kElementPerAccess /*ElementPerAccess*/>;
+  const int ld_size = (ld ? col : row);
+  const int stride = (ld ? row : col);
+  std::cout << "leading dimension size: " << ld_size << "; stride: " << stride
+            << std::endl;
 
-  // Row-Major
-  using GTileShape = cutlass::layout::PitchLinearShape<ld, stride>;
-  using GLayout = cutlass::layout::PitchLinear;
-  using GmemIterator = cutlass::transform::threadblock::PredicatedTileIterator<
-      GTileShape, Element, GLayout, 1 /*AdvanceRank*/, ThreadMap>;
-
-  typename GmemIterator::Params params(GLayout::packed({ld, stride}));
-  // make crosswise be equal to the number of elements that occupy a single
-  // shared memory cache line
-  const int SharedMemoryCacheLineWidth = 128;  // 128B
-  const int crosswise =
-      SharedMemoryCacheLineWidth / (cutlass::sizeof_bits<Element>::value / 8);
-  std::cout << crosswise << std::endl;
-  //   using SLayout = cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
-  //       cutlass::sizeof_bits<Element>::value, crosswise>;
-  using SLayout = cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<
-      cutlass::sizeof_bits<Element>::value, crosswise>;
-  using SmemIterator = cutlass::transform::threadblock::RegularTileIterator<
-      cutlass::MatrixShape<stride /*row*/, ld /*col*/>, Element, SLayout, 1,
-      ThreadMap>;
-
-  load<Element /*element type*/, GmemIterator /*source iterator*/,
-       SmemIterator /*target iterator*/, row, col>
-      <<<grid, block, smem_size, 0>>>(params, matrix.device_ref().data());
+  // column-major
+  TileLoader<row, col, ld, Element, kThreads> load(row, col);
+  TestTileLoader<Element, decltype(load)><<<grid, block, smem_size, 0>>>(
+      load, matrix.device_ref().data(), ld_size, stride);
 
   cudaError_t result = cudaDeviceSynchronize();
-
-  TileLoader<row, col, 0, Element, kThreads> load(row, col);
-
-  TestTileLoader<Element, decltype(load)>
-      <<<grid, block, smem_size, 0>>>(load, matrix.device_ref().data());
-
   if (result != cudaSuccess) {
     std::cout << "Failed" << std::endl;
   }
