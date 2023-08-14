@@ -70,29 +70,6 @@ inline void __cublasCheck(cublasStatus_t err, const char* file, int line) {
 }
 #define CublasCheck(call) __cublasCheck(call, __FILE__, __LINE__)
 
-template <typename T>
-__global__ void FillZeros(T* data, int num) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (tid < num) data[tid] = static_cast<T>(0.);
-}
-
-void PrintFloats(float* data, int numel) {
-  // data is on the device
-  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(3);
-
-  float* h_data;
-  CudaCheck(cudaMallocHost((void**)&h_data, sizeof(float) * numel));
-  CudaCheck(
-      cudaMemcpy(h_data, data, sizeof(float) * numel, cudaMemcpyDeviceToHost));
-
-  for (int i = 0; i < numel; ++i) {
-    std::cout << i << ":" << h_data[i] << std::endl;
-  }
-
-  CudaCheck(cudaFreeHost(h_data));
-}
-
 __global__ void ConvertFp16ToFp32(float* out, const __half* in, int64_t numel) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   if (tid < numel) {
@@ -186,4 +163,38 @@ void PrintHalfs(const __half* data, int64_t numel) {
 
   CudaCheck(cudaFree(d_data));
   CudaCheck(cudaFreeHost(h_data));
+}
+
+template <typename T>
+__global__ void FillZeros(T* data, int num) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (tid < num) data[tid] = static_cast<T>(0.);
+}
+
+void PrintFloats(float* data, int numel) {
+  // data is on the device
+  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(5);
+
+  float* h_data;
+  CudaCheck(cudaMallocHost((void**)&h_data, sizeof(float) * numel));
+  CudaCheck(
+      cudaMemcpy(h_data, data, sizeof(float) * numel, cudaMemcpyDeviceToHost));
+
+  for (int i = 0; i < numel; ++i) {
+    std::cout << h_data[i] << ",";
+    if ((i + 1) % 8 == 0) std::cout << std::endl;
+  }
+
+  CudaCheck(cudaFreeHost(h_data));
+}
+
+void FillRandomFloats(float* data, int numel) {
+  float mean = 0.;
+  float stddev = 1e-2;
+  curandGenerator_t prng;
+  curandCreateGenerator(&prng, CURAND_RNG_PSEUDO_DEFAULT);
+
+  curandSetPseudoRandomGeneratorSeed(prng, (unsigned long long)clock());
+  curandGenerateNormal(prng, data, numel, mean, stddev);
 }
