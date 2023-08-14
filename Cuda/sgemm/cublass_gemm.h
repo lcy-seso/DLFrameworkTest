@@ -1,6 +1,5 @@
 #pragma once
 #include "cuda_timer.cuh"
-#include "utils.h"
 
 // A, B and C are stored in row-major style.
 template <typename T>

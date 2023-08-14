@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "cutlass/aligned_buffer.h"
-#include "cutlass/core_io.h"
 #include "cutlass/layout/matrix.h"
 #include "cutlass/layout/pitch_linear.h"
 #include "cutlass/matrix_shape.h"
@@ -96,18 +95,10 @@ struct R2RTileLoader {
 
   // FIXME(ying): warp arrangement should be modified according to the original
   // problem size.
-  // warp arrangement: 4 x 8, 8 x 4, 8 x 8
-  static const int kWarpArrangeContiguous = 4;
-  static const int kWarpArrangeStrided = 8;
-
-  static const int ld_size = kCol;
-  static const int stride = kRow;
-
   // Define a global iterator, a shared iterator and their thread map.
   using ThreadMap = cutlass::transform::PitchLinearWarpRakedThreadMap<
-      cutlass::layout::PitchLinearShape<ld_size, stride> /*shape*/, kThreads,
-      cutlass::layout::PitchLinearShape<
-          kWarpArrangeContiguous, kWarpArrangeStrided> /*warp arrangement*/,
+      cutlass::layout::PitchLinearShape<kCol, kRow> /*shape*/, kThreads,
+      cutlass::layout::PitchLinearShape<4, 8> /*warp arrangement*/,
       kAccessInBits / kElmentBits>;
 
   using GTileShape = cutlass::MatrixShape<kRow, kCol>;
@@ -115,6 +106,8 @@ struct R2RTileLoader {
   using GmemIterator = cutlass::transform::threadblock::PredicatedTileIterator<
       GTileShape, Element, GLayout, 1 /*AdvanceRank*/, ThreadMap>;
 
+  // warp arrangement: 4 x 8, 8 x 4, 8 x 8
+  static const int kWarpArrangeContiguous = 4;
   static const int SharedMemoryCacheLineWidth = 128;  // 128B
   // one access of a thread access 128b data along the contiguous dimension
   // how many bits are accessed along the contiguous dimension for a single warp
@@ -124,7 +117,9 @@ struct R2RTileLoader {
   // shared memory cache line
   static const int count2 =
       SharedMemoryCacheLineWidth / (kAccessInBits / kElmentBits);
-  static const int crosswise = count2 > ld_size ? count1 : count2;
+
+  //   static const int crosswise = count2 > kCol ? count1 : count2;
+  static const int crosswise = 32;
 
   using SLayout = cutlass::layout::RowMajorTensorOpMultiplicandCrosswise<
       cutlass::sizeof_bits<Element>::value, crosswise>;
@@ -137,24 +132,25 @@ struct R2RTileLoader {
 
   __device__ void load(Element* src, Element* trg, int tid) const {
     typename GmemIterator::Params params(GLayout::packed({row_size, col_size}));
+
     // Construct the global iterator and load the data to the fragments.
-    GmemIterator gmem_iterator(params, src, {row_size, col_size}, tid);
-
-    typename GmemIterator::Fragment frag;
-    frag.clear();
-    gmem_iterator.load(frag);
-
+    GmemIterator gmem_iterator(params, src, {row_size, col_size} /*Extent*/,
+                               tid);
     SmemIterator smem_iterator(
         typename SmemIterator::TensorRef(
             {trg, SmemIterator::Layout::packed({row_size, col_size})}),
         tid);
 
+    typename GmemIterator::Fragment frag;
+    frag.clear();
+    gmem_iterator.load(frag);
     smem_iterator.store(frag);
+    __syncthreads();
 
     // Call dump_shmem() with different parameters.
-    if (threadIdx.x == 0 && blockIdx.x == 0)
-      printf("\nDump all the elements:\n");
-    cutlass::debug::dump_shmem(trg, row_size * col_size);
+    // if (threadIdx.x == 0 && blockIdx.x == 0)
+    //   printf("\nDump all the elements:\n");
+    // cutlass::debug::dump_shmem(trg, row_size * col_size);
   };
 
   int64_t row_size;

@@ -1,26 +1,16 @@
 #pragma once
 
 #include <cutlass/aligned_buffer.h>
-#include <cutlass/arch/arch.h>
-#include <cutlass/array.h>
-#include <cutlass/core_io.h>
-#include <cutlass/cutlass.h>
+#include <cutlass/epilogue/warp/fragment_iterator_tensor_op.h>
+#include <cutlass/epilogue/warp/tile_iterator_tensor_op.h>
 #include <cutlass/gemm/warp/default_mma_tensor_op.h>
-#include <cutlass/half.h>
-#include <cutlass/layout/matrix.h>
 #include <cutlass/layout/pitch_linear.h>
-#include <cutlass/numeric_types.h>
-#include <cutlass/platform/platform.h>
-#include <cutlass/subbyte_reference.h>
 #include <cutlass/transform/pitch_linear_thread_map.h>
 #include <cutlass/transform/threadblock/predicated_tile_iterator.h>
 #include <cutlass/transform/threadblock/regular_tile_iterator.h>
 #include <cutlass/transform/threadblock/regular_tile_iterator_tensor_op.h>
-
-#include "cutlass/epilogue/warp/fragment_iterator_tensor_op.h"
-#include "cutlass/epilogue/warp/tile_iterator_tensor_op.h"
-#include "cutlass/util/debug.h"
-#include "cutlass/util/device_dump.h"
+#include <cutlass/util/debug.h>
+#include <cutlass/util/device_dump.h>
 
 /// Test kernel
 template <typename Mma, typename ThreadblockShape, typename WholeShape,
