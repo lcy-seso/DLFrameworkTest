@@ -41,7 +41,6 @@ int TestRowMajor() {
   const int col = 64;
   int numel = row * col;
 
-  // using Element = float;
   using Element = cutlass::half_t;
   using Layout = cutlass::layout::RowMajor;
 
@@ -52,19 +51,31 @@ int TestRowMajor() {
   InitHalfs<<<blocks, threads>>>(src, numel);
   // PrintHalfs(src, numel);
 
+  // using Element = float;
+  // Element* src;
+  // CudaCheck(cudaMalloc(&src, numel * sizeof(Element)));
+
   int smem_size = int(sizeof(Element) * row * col);
-  const int kThreads = 128;
+  const int kThreads = 32;
   dim3 grid(1, 1);
   dim3 block(kThreads, 1, 1);
 
+  // FillRandomFloats(src, numel);
+  // PrintFloats(src, numel);
+
+  // return 0;
+
   // row-major to column-major
-  // R2CTileLoader<row, col, Element, kThreads> load1(row, col);
-  // TestTileLoader<Element, decltype(load1)>
-  //     <<<grid, block, smem_size, 0>>>(load1,
-  //     reinterpret_cast<Element*>(src));
+  TileLoader<row, col, Element, kThreads, TileLayout::RowMajor,
+             TileLayout::SwizzledColumnMajor>
+      load1(row, col);
+  TestTileLoader<Element, decltype(load1)>
+      <<<grid, block, smem_size, 0>>>(load1, reinterpret_cast<Element*>(src));
 
   // row-major to row-major
-  R2RTileLoader<row, col, Element, kThreads> load2(row, col);
+  TileLoader<row, col, Element, kThreads, TileLayout::RowMajor,
+             TileLayout::SwizzledRowMajor>
+      load2(row, col);
   TestTileLoader<Element, decltype(load2)>
       <<<grid, block, smem_size, 0>>>(load2, reinterpret_cast<Element*>(src));
 
@@ -98,12 +109,16 @@ int TestColumnMajor() {
   dim3 block(kThreads, 1, 1);
 
   // column-major to column-major
-  C2CTileLoader<row, col, Element, kThreads> load1(row, col);
+  TileLoader<row, col, Element, kThreads, TileLayout::ColumnMajor,
+             TileLayout::SwizzledColumnMajor>
+      load1(row, col);
   TestTileLoader<Element, decltype(load1)>
       <<<grid, block, smem_size, 0>>>(load1, matrix.device_ref().data());
 
   // column-major to column-major
-  C2RTileLoader<row, col, Element, kThreads> load2(row, col);
+  TileLoader<row, col, Element, kThreads, TileLayout::ColumnMajor,
+             TileLayout::SwizzledRowMajor>
+      load2(row, col);
   TestTileLoader<Element, decltype(load2)>
       <<<grid, block, smem_size, 0>>>(load2, matrix.device_ref().data());
 
@@ -117,5 +132,5 @@ int TestColumnMajor() {
 
 int main() {
   TestRowMajor();
-  // TestColumnMajor();
+  TestColumnMajor();
 }
