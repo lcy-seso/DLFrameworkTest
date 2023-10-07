@@ -74,6 +74,28 @@ Layout 可以表示出重复访问：
     +---+---+---+---+
 ```
 
+## 与Layout相关的一些概念
+
+```bash
+Layout b = make_layout(4, 2);
+
+      0   1   2   3 
+    +---+---+---+---+
+ 0  | 0 | 2 | 4 | 6 |
+    +---+---+---+---+
+```
+
+```bash
+size(b) = 4
+cosize(b) = 7
+```
+
+<p align="center">
+<img src="figures/example2.png" width=50%>
+</p>
+
+Layout的本质是一个如上图所示的**线性函数**。domain是<ins>**连续变化的整数集点**</ins>。shape会降这些整数集点组成高维空间中的**有序点**，这些点能够用坐标轴连续地进行枚举。这些点的默认排序的顺序是以最左坐标为最速变化，依次类推，遵循字典序。Layout对应的线性函数的形式已经被完全固定了：上面的整数坐标点与strides进行内积操作。
+
 # Reference
 
 1. [CUTLASS 3 0 Next Generation Composable and Reusable GPU Linear Algebra Library - TVMCon2023](https://www.youtube.com/watch?v=QLdUML5MCfE)
