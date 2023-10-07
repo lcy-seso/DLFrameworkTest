@@ -37,7 +37,7 @@ void test2() {
 
 void test3() {
   // divide
-  // Layout vec = Layout<_16, _3>{};  // row vector
+  Layout vec = Layout<_16, _3>{};  // row vector
 
   // Layout col1 = Layout<_4, _1>{};  // col vector
   // Layout mat1 = logical_divide(vec, col1);
@@ -67,17 +67,9 @@ void test3() {
 
 void test4() {
   // complement
-  // Layout a = make_layout(4, 1);
-  // std::cout << "size(a) = " << size(a) << "; cosize(a) = " << cosize(a)
-  //           << std::endl;
-
-  Layout x1 = Layout<_4, _1>{};
-  auto y1 = complement(x1, 24);
-  std::cout << "y1 = " << y1 << std::endl;
-
-  Layout x2 = Layout<_6, _4>{};
-  auto y2 = complement(x2, 24);
-  std::cout << "y2 = " << y2 << std::endl;
+  Layout a = make_layout(4, 1);
+  std::cout << "size(a) = " << size(a) << "; cosize(a) = " << cosize(a)
+            << std::endl;
 
   Layout b = make_layout(4, 2);
   std::cout << "size(b) = " << size(b) << "; "
