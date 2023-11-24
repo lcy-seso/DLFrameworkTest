@@ -3,7 +3,7 @@ include(ExternalProject)
 set(CUTLASS_PREFIX_DIR ${THIRD_PARTY_PATH}/cutlass)
 set(CUTLASS_SOURCE_DIR ${CUTLASS_PREFIX_DIR}/src/extern_cutlass)
 set(CUTLASS_REPOSITORY https://github.com/NVIDIA/cutlass.git)
-set(CUTLASS_TAG v3.2.1)
+set(CUTLASS_TAG v3.2.2)
 
 cache_third_party(
   extern_cutlass
@@ -29,6 +29,3 @@ ExternalProject_Add(
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
   TEST_COMMAND "")
-
-add_library(cutlass INTERFACE)
-add_dependencies(cutlass extern_cutlass)

@@ -85,7 +85,7 @@ cosize(b) = 7
 
 当谈论起函数时，势必涉及：domain，range，codomain。
 
-- ***Domain***：是上图中蓝色的集合，是<ins>**从0开始，stride为1的连续变化地整数集点**</ins>。shape会降这些整数集点解释成高维空间中的**有序点**，这些点能够用高维空间中的坐标进行枚举。这些点的默认排序的顺序遵循这样的规则：以最左坐标为最速变化，依次类推，遵循字典序。这些高维空间中的坐标点集对应的那个顺序就是cute文档中总是会提到的1-D coordinate。
+- ***Domain***：是上图中蓝色的集合，是<ins>**从0开始，stride为1的连续变化的整数点集合**</ins>，这是一种一维编址。在很多时候在我们天然的概念模型中，我们要描述的对象，例如1000个浮点数，或者是256个线程，往往有高维结构并且每个维度都有很好的物理含义，如果能用高维数据来描述这些对象，又自动分析工具来完成这个高维和一维编址之间的映射，会极大地改善可编程性。shape描述了一个高维空间中每个维度的大小，于是这些一维整数点能够被解释成高维空间中的**有序点**。高维空间中的点能够用高维空间中的坐标进行枚举。这些点的默认排序的顺序遵循这样的规则：以最左坐标为最速变化，依次类推，遵循字典序。~~这些高维空间中的坐标点集对应的那个顺序就是cute文档中总是会提到的1-D coordinate~~。
 
 - ***线性映射函数***：Layout对应的线性函数的形式已经被完全固定了：上面的整数坐标点与strides进行内积操作。
 
@@ -332,3 +332,13 @@ c = x / y # (4,(2,3)):(4,(2,16))
 1. [CUTLASS 3 0 Next Generation Composable and Reusable GPU Linear Algebra Library - TVMCon2023](https://www.youtube.com/watch?v=QLdUML5MCfE)
 1. A Generalized Micro-kernel Abstraction for GPU Linear Algebra: [[slides]](https://www.cs.utexas.edu/users/flame/BLISRetreat2023/slides/Thakkar_BLISRetreat2023.pdf): [[video]](https://www.youtube.com/watch?v=muvkCPy3UDE)
 1. [Graphene: An IR for Optimized Tensor Computations on GPUs](https://dl.acm.org/doi/pdf/10.1145/3582016.3582018)
+1. 知乎系列文章
+    - [cute Layout 的代数和几何解释](https://zhuanlan.zhihu.com/p/662089556)
+    - [cute 之 Tensor](https://zhuanlan.zhihu.com/p/663093816)
+    - [cute 之 MMA抽象](https://zhuanlan.zhihu.com/p/663092747)
+    - [cute 之 Copy抽象](https://zhuanlan.zhihu.com/p/666232173?utm_psn=1707515359807221761)
+1. [BLIS](https://github.com/flame/blis#what-people-are-saying-about-blis)
+1. 关于Tensor Core的ldmatrix指令
+    - https://www.zhihu.com/question/600927104/answer/3029266372
+    - https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-1688
+    - https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-ldmatrix
