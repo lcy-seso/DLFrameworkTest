@@ -58,10 +58,9 @@ function(cache_third_party TARGET)
 endfunction()
 
 set(third_party_deps)
-
 include(external/gflags)
 include(external/glog)
 include(external/gtest)
-include(external/cub)
 include(external/cutlass)
+include(external/cccl)
 list(APPEND third_party_deps extern_gtest extern_glog)
