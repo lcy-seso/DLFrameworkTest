@@ -111,6 +111,13 @@ __global__ void InitHalfs(__half* data, int64_t numel) {
   }
 }
 
+__global__ void InitHalfZeros(__half* data, int64_t numel) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid < numel) {
+    data[tid] = __float2half(0.);
+  }
+}
+
 void CheckDiff(const float* data1, const float* data2, int numel) {
   float* data1_cpu = (float*)malloc(numel * sizeof(float));
   CudaCheck(cudaMemcpy(data1_cpu, data1, numel * sizeof(float),
@@ -142,8 +149,8 @@ void InitRandomHalfs(__half* data, int N) {
   curand_fp16::destroy(generator);
 }
 
-void PrintHalfs(const __half* data, int64_t numel) {
-  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(1);
+void PrintHalfs(const __half* data, int64_t numel, int64_t delimiter_num = 0) {
+  std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(0);
 
   float* d_data;
   CudaCheck(cudaMalloc((void**)&d_data, sizeof(float) * numel));
@@ -157,8 +164,8 @@ void PrintHalfs(const __half* data, int64_t numel) {
                        cudaMemcpyDeviceToHost));
 
   for (int i = 0; i < numel; ++i) {
-    std::cout << h_data[i] << ",";
-    if (i && (i + 1) % 16 == 0) std::cout << std::endl;
+    std::cout << h_data[i] << ", ";
+    if (delimiter_num && i % (delimiter_num + 1) == 0) std::cout << std::endl;
   }
 
   CudaCheck(cudaFree(d_data));
