@@ -37,12 +37,12 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
 
   // Interpret the buffer as a tensor using the pointer to the starting address
   // in the global memory.
-  Layout tensor_layout =
+  Layout row_major =
       make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1));
+  auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), row_major);
 
   __shared__ Element smem_buf[shm_size];
-
-  auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), tensor_layout);
+  // shared memory is interpreted as a row major matrix
   auto shmem_tile = make_tensor(
       make_smem_ptr(smem_buf),
       make_layout(make_shape(shm_rows, shm_cols), make_stride(shm_cols, 1)));
@@ -55,7 +55,7 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
   __syncthreads();
 
   // store shared memory tile into global memory
-  auto gmem_tile_trg = make_tensor(make_gmem_ptr(trg + offset), tensor_layout);
+  auto gmem_tile_trg = make_tensor(make_gmem_ptr(trg + offset), row_major);
 
   auto thrd_shmem2 = loader.partition_S(shmem_tile);
   auto thrd_gmem2 = loader.partition_D(gmem_tile_trg);
@@ -64,8 +64,8 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
 
 int main() {
   using Element = cutlass::half_t;
-  const int kRows = 16 * 3;
-  const int kCols = 32 * 7;
+  const int kRows = 32 * 3;
+  const int kCols = 128 * 7;
   int numel = kRows * kCols;
 
   thrust::host_vector<Element> h_A(kRows * kCols);
@@ -81,12 +81,12 @@ int main() {
   thrust::fill(d_B.begin(), d_B.end(), static_cast<Element>(0.));
 
   const int kThreads = 64;
-  auto shm_row = _16{};
-  auto shm_col = _32{};
+  auto shm_row = _32{};
+  auto shm_col = _128{};
 
   // threads are laid out as a row major matrix
   Layout thread_layout = Layout<Shape<_16, _4>, Stride<_4, _1>>{};
-  // values are laid out as a row vector
+  // values are laid out as a row vector, 8 values per access.
   Layout value_layout = Layout<Shape<_1, _8>, Stride<_0, _1>>{};
 
   auto shm_shape = make_shape(shm_row, shm_col);
