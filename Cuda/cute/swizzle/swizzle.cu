@@ -1,14 +1,20 @@
+#include <bitset>
 #include <cute/algorithm/copy.hpp>
 #include <cute/tensor.hpp>
 #include <iomanip>
 
 using namespace cute;
 
-void test() {
+void test(int kRows, int kCols) {
   auto row_major = Layout<Shape<_4, _8>, Stride<_8, _1>>{};
-  using SwizzledColumnLayout =
+  using SwizzledRowLayout =
       decltype(composition(Swizzle<2, 0, 3>{}, row_major));
-  SwizzledColumnLayout swizzled;
+  SwizzledRowLayout swizzled;
+
+  // using SmemLayout =
+  //     decltype(tile_to_shape(SwizzledColumnLayout{}, Shape<Int<8>,
+  //     Int<16>>{}));
+  // SmemLayout swizzled;
 
   std::cout << std::endl << "row major: " << std::endl;
   for (int i = 0; i < kRows; ++i) {
@@ -27,50 +33,34 @@ void test() {
   }
 }
 
-template <typename Shape, typename ShmShape, typename TiledCopy,
-          typename Element>
-__global__ void copy(Shape problem_shape, ShmShape shm_shape,
-                     TiledCopy tiled_copy, const Element* src) {
-  int rows = size<0>(problem_shape);
-  int cols = size<1>(problem_shape);
+void swizzled_function(int lane) {
+  // 8 threads form a phrase
+  int c = lane % 8;
+  int s = lane / 8;
 
-  auto shm_rows = size<0>(shm_shape);
-  auto shm_cols = size<1>(shm_shape);
+  // std::cout << "(s, c) = (" << s << ", " << c << ")" << std::endl;
+  // std::cout << "binary c = " << std::bitset<32>(c) << std::endl;
 
-  const int shm_size = decltype(size(shm_shape))::value;
+  int smem_row = (c & 1) | ((c >> 1) & 2);
+  int bank = ((c << 1) & 4) | s ^ smem_row;
 
-  const int x_block = blockIdx.x;
-  const int y_block = blockIdx.y;
+  std::cout << lane << " => " << bank << std::endl;
+  if (lane && (lane + 1) % 8 == 0) std::cout << std::endl;
 
-  const int offset = x_block * (shm_rows * cols) + y_block * shm_cols;
-
-  // Interpret the buffer as a tensor using the pointer to the starting address
-  // in the global memory.
-  Layout row_major =
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1));
-  auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), row_major);
-
-  __shared__ Element smem_buf[shm_size];
-
-  auto shmem_tile = make_tensor(
-      make_smem_ptr(smem_buf),
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(shm_cols, 1)));
-
-  auto loader = tiled_copy.get_thread_slice(threadIdx.x);
-
-  auto thrd_gmem = loader.partition_S(gmem_tile);
-  auto thrd_shmem = loader.partition_D(shmem_tile);
-  copy(tiled_copy, thrd_gmem, thrd_shmem);
-  __syncthreads();
+  // int smem_offset = smem_row * ldm_smem + bank;
 }
 
 int main() {
-  using Element = cutlass::half_t;
-  const int kRows = 4;
-  const int kCols = 8;
-  int numel = kRows * kCols;
+  // using Element = cutlass::half_t;
+  // const int kRows = 4;
+  // const int kCols = 8;
+  // int numel = kRows * kCols;
 
-  using GmemTiledCopy = decltype(make_tiled_copy(
-      Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<cute::uint128_t>, half_t>{},
-      Layout<Shape<_16, _8>, Stride<_1, _16>>{}, Layout<Shape<_8, _1>>{}));
+  // test(kRows, kCols);
+
+  for (int i = 0; i < 32; ++i) swizzled_function(i);
+
+  int a = 2;
+  std::bitset<32> x(a);
+  // std::cout << "x = " << x << std::endl;
 }
