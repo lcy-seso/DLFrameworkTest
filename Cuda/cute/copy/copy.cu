@@ -40,22 +40,15 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
   Layout tensor_layout =
       make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1));
 
-  if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0) {
-    printf("whole shape = [%d, %d]\n", rows, cols);
-    printf("shm shape = [%d, %d]\n", shm_rows, shm_cols);
-    printf("numel = %d\n", shm_size);
-    // print_layout(tensor_layout);
-  }
+  __shared__ Element smem_buf[shm_size];
 
   auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), tensor_layout);
+  auto shmem_tile = make_tensor(
+      make_smem_ptr(smem_buf),
+      make_layout(make_shape(shm_rows, shm_cols), make_stride(shm_cols, 1)));
 
-  // Interpret the buffer as a tensor using the pointer to the starting address
-  // in the shared memory.
-  __shared__ Element smem_buf[shm_size];
-  auto shmem_tile = make_tensor(make_smem_ptr(smem_buf), tensor_layout);
-
-  // load from global memory to shared memory
   auto loader = tiled_copy.get_thread_slice(threadIdx.x);
+
   auto thrd_gmem = loader.partition_S(gmem_tile);
   auto thrd_shmem = loader.partition_D(shmem_tile);
   copy(tiled_copy, thrd_gmem, thrd_shmem);
@@ -63,23 +56,23 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
 
   // store shared memory tile into global memory
   auto gmem_tile_trg = make_tensor(make_gmem_ptr(trg + offset), tensor_layout);
+
   auto thrd_shmem2 = loader.partition_S(shmem_tile);
   auto thrd_gmem2 = loader.partition_D(gmem_tile_trg);
   copy(tiled_copy, thrd_shmem2, thrd_gmem2);
-  __syncthreads();
 }
 
 int main() {
   using Element = cutlass::half_t;
-  const int kRows = 32;
-  const int kCols = 16;
+  const int kRows = 16 * 3;
+  const int kCols = 32 * 7;
   int numel = kRows * kCols;
 
   thrust::host_vector<Element> h_A(kRows * kCols);
   srand(42);
   for (int i = 0; i < h_A.size(); ++i) {
-    // h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
-    h_A[i] = __float2half(i);
+    h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
+    // h_A[i] = __float2half(i);
   }
 
   // copy data from host to device
@@ -88,19 +81,21 @@ int main() {
   thrust::fill(d_B.begin(), d_B.end(), static_cast<Element>(0.));
 
   const int kThreads = 64;
-  Layout thread_layout = Layout<Shape<_16, _4>, Stride<_4, _1>>{};
-  Layout value_layout = Layout<Shape<_1, _8>, Stride<_0, _1>>{};
+  auto shm_row = _16{};
+  auto shm_col = _32{};
 
-  auto shm_row = _32{};
-  auto shm_col = _16{};
+  // threads are laid out as a row major matrix
+  Layout thread_layout = Layout<Shape<_16, _4>, Stride<_4, _1>>{};
+  // values are laid out as a row vector
+  Layout value_layout = Layout<Shape<_1, _8>, Stride<_0, _1>>{};
 
   auto shm_shape = make_shape(shm_row, shm_col);
   auto problem_shape = make_shape(kRows, kCols);
 
-  //   const bool Has_cp_async = true;
-  //   using CopyStruct = std::conditional_t<
-  //       Has_cp_async, SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,
-  //       DefaultCopy>;
+  // const bool Has_cp_async = true;
+  // using CopyStruct = std::conditional_t<
+  //     Has_cp_async, SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,
+  //     DefaultCopy>;
 
   auto tiled_copy = make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
                                     thread_layout, value_layout);
@@ -120,9 +115,9 @@ int main() {
       reinterpret_cast<__half*>(thrust::raw_pointer_cast(h_B.data())),
       h_A.size()));
 
-  int blocks = CEIL_DIV(numel, kThreads);
-  PrintValueHost<Element><<<blocks, kThreads>>>(
-      thrust::raw_pointer_cast(d_B.data()), kRows, kCols);
+  // int blocks = CEIL_DIV(numel, kThreads);
+  // PrintValueHost<Element><<<blocks, kThreads>>>(
+  //     thrust::raw_pointer_cast(d_B.data()), kRows, kCols);
 
   return 0;
 }

@@ -79,11 +79,52 @@ void test4() {
   print_layout(layout);
 }
 
+void test5() {
+  // product
+  Layout a = Layout<Shape<_2, _2>, Stride<_1, _2>>{};
+  Layout b = Layout<Shape<_3, _4>, Stride<_4, _1>>{};
+
+  Layout c = raked_product(a, b);
+  print_layout(a);
+  print_layout(b);
+  print_layout(c);
+
+  Layout d1 = right_inverse(c);
+  std::cout << std::endl
+            << "right inverse(c):" << std::endl
+            << std::endl
+            << d1 << std::endl;
+  Layout d2 = d1.with_shape(make_shape(size(a), size(b)));
+  print_layout(d2);
+}
+
+void test6() {
+  // product
+  Layout a = Layout<Shape<_2, _4>, Stride<_4, _1>>{};
+  Layout b = Layout<Shape<_1, _4>, Stride<_0, _1>>{};
+
+  Layout c = raked_product(a, b);
+  print_layout(a);
+  print_layout(b);
+  print_layout(c);
+
+  Layout d1 = right_inverse(c);
+  std::cout << std::endl
+            << "right inverse(c):" << std::endl
+            << std::endl
+            << d1 << std::endl;
+  Layout d2 = d1.with_shape(make_shape(size(a), size(b)));
+  print_layout(d2);
+}
+
 int main(int argc, char** argv) {
   // test1();
   // test2();
   // test3();
-  test4();
+  // test4();
+  // test5();
+
+  test6();
 
   return 0;
 }
