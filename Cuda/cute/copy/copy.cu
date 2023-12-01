@@ -32,37 +32,33 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
   const int x_block = blockIdx.x;
   const int y_block = blockIdx.y;
 
-  const int offset = x_block * shm_rows * cols + y_block * shm_cols;
+  // advance the pointer to the input data to the current CTA
+  const int offset = x_block * (shm_rows * cols) + y_block * shm_cols;
+
+  // Interpret the buffer as a tensor using the pointer to the starting address
+  // in the global memory.
+  Layout tensor_layout =
+      make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1));
 
   __shared__ Element smem_buf[shm_size];
 
-  auto gmem_tile = make_tensor(
-      make_gmem_ptr(src + offset),
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1)));
+  auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), tensor_layout);
   auto shmem_tile = make_tensor(
       make_smem_ptr(smem_buf),
       make_layout(make_shape(shm_rows, shm_cols), make_stride(shm_cols, 1)));
 
   auto loader = tiled_copy.get_thread_slice(threadIdx.x);
+
   auto thrd_gmem = loader.partition_S(gmem_tile);
   auto thrd_shmem = loader.partition_D(shmem_tile);
-
-  // auto thrd_reg = make_fragment_like(thrd_shmem);
-  // copy(tiled_copy, thrd_gmem, thrd_reg);
-  // __syncthreads();
-  // copy(tiled_copy, thrd_reg, thrd_shmem);
-  // __syncthreads();
-
   copy(tiled_copy, thrd_gmem, thrd_shmem);
   __syncthreads();
 
   // store shared memory tile into global memory
-  auto storer = tiled_copy.get_thread_slice(threadIdx.x);
-  auto gmem_tile_trg = make_tensor(
-      make_gmem_ptr(trg + offset),
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1)));
-  auto thrd_shmem2 = storer.partition_S(shmem_tile);
-  auto thrd_gmem2 = storer.partition_D(gmem_tile_trg);
+  auto gmem_tile_trg = make_tensor(make_gmem_ptr(trg + offset), tensor_layout);
+
+  auto thrd_shmem2 = loader.partition_S(shmem_tile);
+  auto thrd_gmem2 = loader.partition_D(gmem_tile_trg);
   copy(tiled_copy, thrd_shmem2, thrd_gmem2);
 }
 
@@ -75,8 +71,8 @@ int main() {
   thrust::host_vector<Element> h_A(kRows * kCols);
   srand(42);
   for (int i = 0; i < h_A.size(); ++i) {
-    // h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
-    h_A[i] = __float2half(i);
+    h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
+    // h_A[i] = __float2half(i);
   }
 
   // copy data from host to device
@@ -87,9 +83,6 @@ int main() {
   const int kThreads = 64;
   auto shm_row = _16{};
   auto shm_col = _32{};
-
-  // 32 / 8 = 4
-  // 64 / 4 = 16
 
   // threads are laid out as a row major matrix
   Layout thread_layout = Layout<Shape<_16, _4>, Stride<_4, _1>>{};
