@@ -1,5 +1,5 @@
 
-## swizzle函数的形式
+## `swizzle<bits, base, shift>`
 
 swizzle函数形式如下：
 
@@ -22,7 +22,7 @@ return offset ^ shiftr(offset & yyy_msk, shift)
 ## 例子：swizzle<2,0,3>
 
 swizzle是一个重排序函数，给定一个整数表示的index，输出重排序之后的index。
-在内部运算的时候用输入index的二进制表示参数与swizzle函数的计算。
+在内部运算的时候用输入index的二进制表示参与swizzle函数的计算。
 
 以`swizzle<2,0,3>`这个swizzle函数为例: bits = 2, base = 0, shift = 3
 - $\text{bits}$: mask含有的bit数。
