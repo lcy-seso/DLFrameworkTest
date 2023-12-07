@@ -2,17 +2,50 @@
 
 # Tensor Core 指令的数据Distribution
 
-$8 \times 8 \times 128b$是tensor core的一个基本building block。
-
-调用ldmatrix时，32线程协作从shared memory协作加载$8\times8$大小的矩阵，每个矩阵元素是16bit的数据。ldmatrix一时钟周期最多可加载4个这样的$8 \times 8$矩阵。
-- 每个线程用128b向量化访存质量读取shared memory中连续4 bank，8个线程一个shared memory访存事务，32个线程被组成4组，每8线程一组。
-
 <p align="center">
 <img src="figures/thread_organization.png" width=30%><br>
 warp-level指令的线程组织格式
 </p>
 
 warp协作指令中，线程总是以$4\times 8$或$8 \times 4$形状组织
+
+
+## Tensor Core
+
+>V100中Tensor Core可以聚合的操作八个线程的寄存器，A100则可以操作32个线程的所有寄存器。“A100's enhanced 16x8x16 Tensor Core (TC) instructions improve on V100 by reducing register accesses from 80 to 28, and hardware instructions issued from 16 to 2”
+
+如下图所示，$8 \times 8 \times 128b$ ($m = 8, n = 8, k = 128 \text{b}$) 这样的一个矩阵乘形状是tensor core mma指令的一个基本building block。
+ 
+<p align="center">
+<img src="figures/tensor-core-fundamental-shape.png"><br>
+Fig. 1 出自 Ref 3.
+</p>
+
+一个warp 内的32线程总是以$4 \times 8$排布进行组织，$4$总是分布在内存中的连续维度之上。
+
+一个$32\text{bit}\ (4 \text{byte})$寄存器可以存储2个半精度浮点数，一个warp 32线程的32-bit寄存器正好可以存储一个$8 \times 8$半精度矩阵 （$32 \times 4 = 128 \ \text{bytes}$ 数据。$8 \times 8 \times 16 / 8 = 128 \ \text{bytes}$），可以被一个warp的32-bit寄存器下，然后用一个index进行数据的寻址。
+
+Tensor core 编程打破了原先CUDA programming model中每个线程寄存器数据是私有的这一情况。Tensor core的MMA指令能同时操作所有lane上的寄存器，所有lane上的寄存器拼在一起存储了一块完整的矩阵乘。
+那么下面一个问题是，这个$8 \times 8$矩阵在lanes中是如何scatter的？
+
+tensor core的mma指令要求矩阵乘操作数$A$是行优先，$B$列优先，$C$行优先。$8 \times 8$的矩阵可以行优先或者列优先，两种情况下与lane id对应关系如图1所示。
+
+<p align="center">
+<img src="figures/ldmatrix1.png"><br>
+Fig 2. lane ID 与矩阵元素之间的对应关系（出自Ref 6）。
+</p>
+
+>the ldmatrix instruction uses a warp (32 threads) to move up to four 8 × 8 matrices from shared memory into the registers of the warp’s threads.
+
+调用ldmatrix时，32线程协作从shared memory协作加载$8\times8$大小的矩阵，每个矩阵元素是16bit的数据。ldmatrix一时钟周期最多可加载4个这样的$8 \times 8$矩阵。以加载4个$8 \times 8$矩阵为例：
+- 每个线程用128b向量化访存质量读取shared memory中连续4 bank，8个线程一个shared memory访存事务，32个线程被组成4组，每8线程一组。一个warp 32线程的访问分为4个阶段，每8线程构成一个阶段，shared memory bank conflict发生在这8个线程之中。
+- 每个线程访问128数据（8个半精度），后scatter到4个lane上的私有寄存器。
+
+数据分布情况如下图所示：
+
+<p align="center">
+<img src="figures/ldmatrix3.png">
+</p>
 
 ## ldmatrix
 
@@ -175,9 +208,17 @@ MM ref:
 ```
 
 <p align="center">
-<img src="figures/mma-overall.png" width=90%>
+<img src="figures/mma-overall.png" width=60%>
 </p>
 
 # Reference
 
 1. [ldmatrix PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-ldmatrix)
+1. [swizzling modes](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#swizzling-modes)
+1. [Nvidia Tensor Core-CUDA HGEMM Advanced Optimization](https://bruce-lee-ly.medium.com/nvidia-tensor-core-cuda-hgemm-advanced-optimization-5a17eb77dd85)
+1. [DEVELOPING CUDA KERNELS TO PUSH TENSOR CORES TO THE ABSOLUTE LIMIT ON NVIDIA A100](https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21745-developing-cuda-kernels-to-push-tensor-cores-to-the-absolute-limit-on-nvidia-a100.pdf)
+1. https://github.com/nicolaswilde/cuda-tensorcore-hgemm/tree/master
+1. [Warp-level matrix load instruction: ldmatrix](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-instructions-ldmatrix)
+1. [Demystifying Tensor Cores to Optimize Half-Precision Matrix Multiply](https://www.cse.ust.hk/~weiwa/papers/yan-ipdps20.pdf)
+1. [NVIDIA A100 Tensor Core GPU Architecture](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf#cid=_pa-srch-baid_zh-cn)
+1. https://www.zhihu.com/question/587780273/answer/2929756314
