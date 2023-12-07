@@ -107,6 +107,7 @@ int main() {
       reinterpret_cast<cutlass::half_t*>(thrust::raw_pointer_cast(h_C2.data())),
       make_shape(m, n), make_stride(n, 1));
 
+  // debug
   auto tile = make_tile(8, 8);
   auto coor = make_coord(0, 0);
   Tensor tc1 = local_tile(tensor_C, tile, coor);
