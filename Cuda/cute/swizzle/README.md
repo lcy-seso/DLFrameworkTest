@@ -37,25 +37,25 @@ zzz_msk = bit_msk << (base - min(0, shift))
 return offset ^ shiftr(offset & yyy_msk, shift)
 ```
 
-- **$\text{bits}$**: mask含有的bit数。给定bits和shift收，首先计算出$YYY \text{mask}$。
+- **$\text{bits}$**: mask含有的bit数。给定bits和shift，首先计算出$YYY \text{mask}$。
     - $YYY\ \text{mask}$ 长 `bits + base + shift`位，前 `bits` 位全1，后 `base + shift`位全为0。
     - 程序中$YYY\ \text{mask}$用一个32位整数表示，$[0, \text{bits} + \text{base} + \text{shift})$位全部是0。
-- **$\text{base}$**: $2^{\text{base}}$在index的二进制表示中，最后2个bit保持不变。
-- **$\text{shift}$**: $YYY \text{mask}$移动的距离。在二进制计算中将`bits`左移`shift`位置。
+- **$\text{base}$**: 在index的二进制表示中，最后2个bit保持不变。
+- **$\text{shift}$**: $YYY \text{mask}$移动的距离。在二进制计算中将`bits`对应全$1$ bit位右移`shift`位置。
 
 swizzle函数的计算包含三步：
 
-1. v1 = index 的二进制表示与$YYY \text{mask}$相与
-2. v2 = v1 的二进制表示右移shift位
-3. index 与 v2 进行异或
+1. index 的二进制表示与$YYY \text{mask}$相与，结果记作$v1$
+1. $v1$的二进制表示右移shift位，结果记作$v2$
+1. $index$ 与 $v2$ 进行异或，为index 在swizzle函数的作用下映射到的新的index
 
-swizzle<2,2,3>的计算过程如下图所示：
+以swizzle<2,3,2>为了，index' = swizzle(index)的计算过程如下图所示：
 
 >注意：**一个二进制数与全0 **and** 会被置为0，与全1 **and** 保持不变，与全0 **xor** 保持不变。**
 
 <p align="center">
 <img src="figures/swizzle.png"><br>
-swizzle函数
+swizzle<2,3,2>，index' = swizzle(index)计算示意图
 </p>
 
 相当于把上图绿色方框对应的两组比特位进行了反转。
