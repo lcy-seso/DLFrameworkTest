@@ -1,6 +1,3 @@
-import pdb
-
-
 def shiftr(a, s):
     return a >> s if s > 0 else shiftl(a, -s)
 
@@ -32,10 +29,6 @@ class Swizzle:
         bit_msk = (1 << bits) - 1
 
         self.yyy_msk = bit_msk << (base + max(0, shift))
-
-        print(f'yyy_msk = {self.yyy_msk:b}, {self.yyy_msk}')
-
-        pdb.set_trace()
 
         self.zzz_msk = bit_msk << (base - min(0, shift))
 
