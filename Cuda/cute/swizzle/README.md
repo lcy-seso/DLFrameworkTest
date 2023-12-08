@@ -1,9 +1,9 @@
 <!-- vscode-markdown-toc -->
 - [Swizzle](#swizzle)
   - [swizzle\<bits, base, shift\>](#swizzlebits-base-shift)
+  - [如何设置bits, base, shift](#如何设置bits-base-shift)
   - [swizzle\<2,0,3\>](#swizzle203)
   - [更多例子](#更多例子)
-    - [改变base](#改变base)
   - [补充：两个十进制整数的异或](#补充两个十进制整数的异或)
 - [Reference](#reference)
 
@@ -73,7 +73,16 @@ Fig 1. swizzle<2,3,2>，index' = swizzle(index)计算示意图
 <img src="figures/swizzle3.png" width=50%>
 </p>
 
-在半精度矩阵乘法中我们会用到两种swizzle方案，`<2,3,3>` 和 `<3,3,3>`。下表我们来看一下当bits=2和3时，异或的所有可能情况：
+## 如何设置bits, base, shift
+
+在半精度矩阵乘法中我们会用到两种swizzle方案，`<2,3,3>` 和 `<3,3,3>`。
+
+1. 中间的base 3，表示$2^{\text{base}}$个数字为一组，组内不发生swizzle。每线程读取128b数据，128 / 16 = 8，也就是128b等于8个半精度浮点数。
+1. bits = 2 时，$2^{0 + \text{base}} = 2^3 = 8$， $2^{1 + \text{base}} = 2^4 = 16$，index的移动距离是：$\pm 8$, $\pm 16$, $\pm 24$；
+1. bits = 3 时，$2^{0 + \text{base}} = 2^3 = 8$， $2^{1 + \text{base}} = 2^4 = 16$，$2^{2 + \text{base}} = 2^5 = 32$，index的移动距离是：$\pm 8$, $\pm 16$, $\pm 24$，${\pm 56}$；bits 决定了最长移动距离 (***这里略微计算一下最长移动距离会移到几个bank之后？***)。
+1. shift = 3，如果每个线程访问128b数据（4 bank），8个线程访问一条memory cache line，构成一个shared memory memory transaction
+
+下表我们来看一下当bits=2和3时，异或的所有可能情况，表格中的括号表示移动距离（一个距离含有$2^{\text{base}}$个元素）：
 
 swizzle<3, 3, 3>
 ||000|001|010|011|100|101|110|111|
@@ -121,10 +130,6 @@ swizzle<2, 3, 3>
 |***3***|27|26|25|24|31|30|29|28|
 
 ## 更多例子
-
-我们通过例子来观察一下以上的位运算反映到宏观层面的直觉含义。$8 \times 8$个元素以行优先组织。
-
-### 改变base
 
 swizzle(2, 0, 3)
 
