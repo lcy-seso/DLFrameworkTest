@@ -1,3 +1,6 @@
+import pdb
+
+
 def shiftr(a, s):
     return a >> s if s > 0 else shiftl(a, -s)
 
@@ -29,10 +32,16 @@ class Swizzle:
         bit_msk = (1 << bits) - 1
 
         self.yyy_msk = bit_msk << (base + max(0, shift))
+
+        print(f'yyy_msk = {self.yyy_msk:b}, {self.yyy_msk}')
+
+        pdb.set_trace()
+
         self.zzz_msk = bit_msk << (base - min(0, shift))
 
     # operator () (transform integer)
     def __call__(self, offset):
+        pdb.set_trace()
         return offset ^ shiftr(offset & self.yyy_msk, self.shift)
 
     # Size of the domain
@@ -52,12 +61,31 @@ class Swizzle:
         return f"Swizzle({self.bits},{self.base},{self.shift})"
 
 
+def get_1d_ids(i, j, rows, cols, row_major=True):
+    if row_major:
+        return i * cols + j
+    else:
+        return j * rows + i
+
+
+def print_result(rows, cols, swizzle_func, row_major=True):
+    res = '||'
+    for i in range(cols):
+        res += f'*{i}*|'
+    res += '\n|'
+    for i in range(cols + 1):
+        res += ':--|'
+    res += '\n'
+
+    for i in range(rows):
+        res += f'|***{i}***|'
+        for j in range(cols):
+            ids = swizzle_func(get_1d_ids(i, j, rows, cols, row_major))
+            res += f'{ids}|'
+        res += '\n'
+    print(res)
+
+
 if __name__ == "__main__":
     swizzle = Swizzle(2, 2, 3)
-
-    res = ''
-    for i in range(0, 64):
-        res += (str(swizzle(i)) + ', ')
-        if not (i + 1) % 8:
-            res += '\n'
-    print(res)
+    print_result(4, 8, swizzle)
