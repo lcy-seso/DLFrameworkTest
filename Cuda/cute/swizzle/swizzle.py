@@ -34,7 +34,6 @@ class Swizzle:
 
     # operator () (transform integer)
     def __call__(self, offset):
-        pdb.set_trace()
         return offset ^ shiftr(offset & self.yyy_msk, self.shift)
 
     # Size of the domain
