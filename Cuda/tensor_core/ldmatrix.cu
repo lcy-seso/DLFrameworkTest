@@ -3,87 +3,104 @@
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
-template <bool transpose = false>
-__device__ int ldsm(void* addr) {
-  unsigned int addr_int = __cvta_generic_to_shared(addr);
-  int r;
+#define N1 8 * 8
 
-  if (!transpose) {
-    asm volatile("ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%0}, [%1];\n"
-                 : "=r"(r)
-                 : "r"(addr_int));
-  } else {
-    asm volatile("ldmatrix.sync.aligned.m8n8.x1.trans.shared.b16 {%0}, [%1];\n"
-                 : "=r"(r)
-                 : "r"(addr_int));
-  }
+__global__ void LdmatrixX1(bool trans) {
+  __shared__ half data[N1];
 
-  return r;
-}
+  int tid = threadIdx.x;
 
-__global__ void foo() {
-  __shared__ half data[8 * 8];
-
-  int idx = threadIdx.x;
-  if (idx == 0) {
-    for (int i = 0; i < 8 * 8; ++i) {
-      data[i] = i;
+  if (threadIdx.x == 0) {
+    for (size_t i = 0; i < N1; ++i) {
+      data[i] = __float2half(float(i));
     }
   }
   __syncthreads();
 
-  void* addr = (char*)data + (idx % 8) * 16;
-  // for .x1 only T0-T7 is response for the address
-  // but the other thread must specify a readable address
-  if (idx >= 8) {
-    addr = data;
+  uint32_t r;
+  uint32_t addr = __cvta_generic_to_shared((char*)data + (tid % 8) * 16);
+  if (tid > 8) addr = __cvta_generic_to_shared(data);
+
+  if (trans) {
+    asm volatile("ldmatrix.sync.aligned.x1.trans.m8n8.shared.b16 {%0}, [%1];\n"
+                 : "=r"(r)
+                 : "r"(addr));
+  } else {
+    asm volatile("ldmatrix.sync.aligned.x1.m8n8.shared.b16 {%0}, [%1];\n"
+                 : "=r"(r)
+                 : "r"(addr));
   }
+  __syncthreads();
 
-  {
-    int r = ldsm<false>(addr);
+  half* data_ptr = (half*)(&r);
+  printf("[%d], %.0f, %.0f\n", tid, __half2float(data_ptr[0]),
+         __half2float(data_ptr[1]));
 
-    __shared__ half data_out[8 * 8];
+  __shared__ half data_out[N1];
+  data_out[tid * 2] = data_ptr[0];
+  data_out[tid * 2 + 1] = data_ptr[1];
 
-    data_out[idx * 2] = ((half*)(&r))[0];
-    data_out[idx * 2 + 1] = ((half*)(&r))[1];
-
-    __syncthreads();
-
-    if (idx == 0) {
-      printf("non-transpose:\n");
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-          printf("%.1f ", __half2float(data_out[i * 8 + j]));
-        }
-        printf("\n");
+  if (tid == 0) {
+    printf("\n");
+    for (size_t i = 0; i < 8; ++i) {
+      for (size_t j = 0; j < 7; ++j) {
+        printf("%.0f, ", __half2float(data_out[i * 8 + j]));
       }
+      printf("%.0f\n", __half2float(data_out[(i + 1) * 8 - 1]));
     }
   }
+}
 
-  {
-    int r = ldsm<true>(addr);
+#define N2 8 * 16
+__global__ void LdmatrixX2(bool trans) {  // column major
+  __shared__ half data[N2];
 
-    __shared__ half data_out[8 * 8];
+  int tid = threadIdx.x;
 
-    data_out[idx * 2] = ((half*)(&r))[0];
-    data_out[idx * 2 + 1] = ((half*)(&r))[1];
+  if (threadIdx.x == 0) {
+    for (size_t i = 0; i < N2; ++i) {
+      data[i] = __float2half(float(i));
+    }
+  }
+  __syncthreads();
 
-    __syncthreads();
+  uint32_t r;
+  uint32_t addr = __cvta_generic_to_shared((char*)data + (tid % 8) * 16);
+  if (tid > 8) addr = __cvta_generic_to_shared(data);
 
-    if (idx == 0) {
-      printf("transpose:\n");
-      for (int i = 0; i < 8; ++i) {
-        for (int j = 0; j < 8; ++j) {
-          printf("%.1f ", __half2float(data_out[i * 8 + j]));
-        }
-        printf("\n");
+  if (trans) {
+    asm volatile("ldmatrix.sync.aligned.x2.trans.m8n8.shared.b16 {%0}, [%1];\n"
+                 : "=r"(r)
+                 : "r"(addr));
+  } else {
+    asm volatile("ldmatrix.sync.aligned.x2.m8n8.shared.b16 {%0}, [%1];\n"
+                 : "=r"(r)
+                 : "r"(addr));
+  }
+  __syncthreads();
+
+  half* data_ptr = (half*)(&r);
+  printf("[%d], %.0f, %.0f\n", tid, __half2float(data_ptr[0]),
+         __half2float(data_ptr[1]));
+
+  __shared__ half data_out[N2];
+  data_out[tid * 2] = data_ptr[0];
+  data_out[tid * 2 + 1] = data_ptr[1];
+
+  if (tid == 0) {
+    printf("\n");
+    for (size_t i = 0; i < 8; ++i) {
+      for (size_t j = 0; j < 7; ++j) {
+        printf("%.0f, ", __half2float(data_out[i * 8 + j]));
       }
+      printf("%.0f\n", __half2float(data_out[(i + 1) * 8 - 1]));
     }
   }
 }
 
 int main() {
-  foo<<<1, 32>>>();
+  // LdmatrixX1<<<1, 32>>>(false);
+  LdmatrixX2<<<1, 32>>>(false);
 
   cudaDeviceSynchronize();
 }

@@ -24,9 +24,9 @@ __global__ void PrintValueHost(const cutlass::half_t* data, int rows,
     for (int i = 0; i < rows; ++i) {
       printf("[%d]:\t", i);
       for (int j = 0; j < cols - 1; ++j)
-        printf("%.3f, ", __half2float(tmp[i * cols + j]));
+        printf("%.0f, ", __half2float(tmp[i * cols + j]));
 
-      printf("%.3f\n", __half2float(tmp[(i + 1) * cols - 1]));
+      printf("%.0f\n", __half2float(tmp[(i + 1) * cols - 1]));
     }
     printf("\n\n");
   }
