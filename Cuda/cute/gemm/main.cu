@@ -22,9 +22,9 @@ void Compare(const __half* data1, const __half* data2, int m, int n) {
 int main() {
   srand(10086);
 
-  int m = 81920;
-  int n = 256;
-  int k = 256;
+  int m = 64;
+  int n = 64;
+  int k = 32;
 
   using Element = __half;
 
@@ -51,22 +51,23 @@ int main() {
   using mma_traits = MMA_Traits<mma_op>;
   using mma_atom = MMA_Atom<mma_traits>;
 
-  using MMA =
-      decltype(make_tiled_mma(mma_atom{}, make_layout(Shape<_2, _2, _1>{}),
-                              make_layout(Shape<_1, _2, _1>{})));
-  constexpr int kTileM = 128;
-  constexpr int kTileN = 128;
+  constexpr int kTileM = 64;
+  constexpr int kTileN = 64;
   constexpr int kTileK = 32;
 
-  dim3 block(size(MMA{}));
+  using TiledMma = TiledMMA<MMA_Atom<mma_op>, Layout<Shape<_2, _2, _1>>,
+                            Layout<Shape<_1, _2, _1>>>;
+  std::cout << "threads = " << int(size(TiledMma{})) << std::endl;
+
+  dim3 block(size(TiledMma{}));
   dim3 grid(n / kTileN, m / kTileM);
 
-  for (int i = 0; i < 100; ++i) {
-    gemm_simple<Element, kTileM, kTileN, kTileK, MMA>
-        <<<grid, block>>>(thrust::raw_pointer_cast(d_C.data()),
-                          thrust::raw_pointer_cast(d_A.data()),
-                          thrust::raw_pointer_cast(d_B.data()), m, n, k);
-  }
+  // for (int i = 0; i < 100; ++i) {
+  gemm_simple<Element, kTileM, kTileN, kTileK, TiledMma>
+      <<<grid, block>>>(thrust::raw_pointer_cast(d_C.data()),
+                        thrust::raw_pointer_cast(d_A.data()),
+                        thrust::raw_pointer_cast(d_B.data()), m, n, k);
+  // }
   cudaDeviceSynchronize();
   auto err = cudaGetLastError();
   printf("err = %d, str = %s\n", err, cudaGetErrorString(err));
@@ -77,17 +78,17 @@ int main() {
 
   half alpha = half(1.f);
   half beta = half(0.f);
-  for (int i = 0; i < 100; ++i) {
-    cublasStatus_t ret =
-        cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
-                    thrust::raw_pointer_cast(d_B.data()), k,
-                    thrust::raw_pointer_cast(d_A.data()), k, &beta,
-                    thrust::raw_pointer_cast(d_C2.data()), n);
+  // for (int i = 0; i < 100; ++i) {
+  cublasStatus_t ret =
+      cublasHgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
+                  thrust::raw_pointer_cast(d_B.data()), k,
+                  thrust::raw_pointer_cast(d_A.data()), k, &beta,
+                  thrust::raw_pointer_cast(d_C2.data()), n);
 
-    if (ret != CUBLAS_STATUS_SUCCESS) {
-      printf("blas err = %d, str = %s\n", ret, cublasGetStatusString(ret));
-    }
+  if (ret != CUBLAS_STATUS_SUCCESS) {
+    printf("blas err = %d, str = %s\n", ret, cublasGetStatusString(ret));
   }
+  // }
   cudaDeviceSynchronize();
   err = cudaGetLastError();
   printf("err = %d, str = %s\n", err, cudaGetErrorString(err));
@@ -109,7 +110,7 @@ int main() {
 
   // debug
   auto tile = make_tile(8, 8);
-  auto coor = make_coord(0, 0);
+  auto coor = make_coord(1, 2);
   Tensor tc1 = local_tile(tensor_C, tile, coor);
   Tensor tc1_cublas = local_tile(tensor_C_cublas, tile, coor);
 

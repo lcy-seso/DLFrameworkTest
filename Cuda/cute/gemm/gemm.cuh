@@ -33,8 +33,18 @@ __global__ void gemm_simple(Element* Cptr, const Element* Aptr,
   auto tAgA = thr_mma.partition_A(gA);  // (MMA, MMA_M, MMA_K, num_tile_k)
   auto tBgB = thr_mma.partition_B(gB);  // (MMA, MMA_N, MMA_K, num_tile_k)
   auto tCgC = thr_mma.partition_C(gC);  // (MMA, MMA_M, MMA_N)
-
   auto tArA = thr_mma.partition_fragment_A(gA(_, _, 0));  // (MMA, MMA_M, MMA_K)
+
+  if (threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
+    printf("gA: \n");
+    print(gA);
+    printf("\ntAgA: \n");
+    print(tAgA);
+    printf("\ntArA: \n");
+    print(tArA);
+    printf("\n");
+  }
+
   auto tBrB = thr_mma.partition_fragment_B(gB(_, _, 0));  // (MMA, MMA_N, MMA_K)
   auto tCrC = thr_mma.partition_fragment_C(gC(_, _));     // (MMA, MMA_M, MMA_N)
 

@@ -28,14 +28,12 @@ struct KeTraits {
   using GmemLayoutAtom =
       Layout<Shape<Int<kThreads / kThreadsPerRow>, Int<kThreadsPerRow>>,
              Stride<Int<kThreadsPerRow>, _1>>;
-  using TiledCopy =
-      decltype(make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
-                               GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
 
-  // FIXME(ying): still has bug
-  // using TiledCopy = decltype(make_tiled_copy(
-  //     Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-  //     GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
+  using CopyAtom =
+      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>;
+  // using CopyAtom = Copy_Atom<DefaultCopy, Element>;
+  using TiledCopy = decltype(make_tiled_copy(CopyAtom{}, GmemLayoutAtom{},
+                                             Layout<Shape<_1, _8>>{}));
 
   using GmemLayout =
       Layout<Shape<Int<kShmRows>, Int<kShmCols>>, Stride<Int<kCols>, _1>>;
@@ -67,7 +65,6 @@ __device__ void DebugPrint(const cutlass::half_t* input, int row, int col) {
   The data is stored in row-major order in `src`.
   The data is stored in row-major order in `trg`.
 */
-
 template <typename Element, typename KeTraits>
 __global__ void Copy(const Element* src, Element* trg) {
   extern __shared__ __align__(sizeof(double)) unsigned char shared_buf[];
@@ -108,7 +105,6 @@ __global__ void Copy(const Element* src, Element* trg) {
   auto thrd_shmem2 = loader.partition_S(s_tile);
   auto thrd_gmem2 = loader.partition_D(g_tile2);
   copy(tiled_copy, thrd_shmem2, thrd_gmem2);
-  cute::cp_async_fence();
 }
 
 int main() {
