@@ -1,3 +1,13 @@
+<!-- vscode-markdown-toc -->
+- [Tensor Core 指令的数据Distribution](#tensor-core-指令的数据distribution)
+  - [Tensor Core](#tensor-core)
+  - [ldmatrix](#ldmatrix)
+    - [Operand A: 16x16](#operand-a-16x16)
+    - [Operand B: 16x8](#operand-b-16x8)
+  - [mma](#mma)
+- [Reference](#reference)
+
+
 这个[slides](https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21745-developing-cuda-kernels-to-push-tensor-cores-to-the-absolute-limit-on-nvidia-a100.pdf)很好地解释了TensorCore指令数据分布情况，这里我们自己通过直接调用`ldmatrix`和`mma`指令做一下简单的观察。
 
 # Tensor Core 指令的数据Distribution
@@ -48,6 +58,13 @@ Fig 2. lane ID 与矩阵元素之间的对应关系（出自Ref 6）。
 </p>
 
 ## ldmatrix
+
+每个线程读取128b数据（4个bank），8个线程就能读取一条shared memory cache line（32 bank），32个线程访问shared memory被分成了4个阶段，bank conflict只发生在同一个阶段的8线程之内。于是，ldmatrix指令一个时钟周期**最多**能够同时读取4个$8 \times 128b$大小的矩阵。调用ldmatrix时，输入参数之一是一个128b对齐的shared memory地址，单线程读取128b数据，向其他lane的寄存器scatter数据。ldmatrix能够同时读取4个$8 \times 128$矩阵，8个线程就足以读取一个$8 \times 8$，当输入矩阵比4个$8 \times 128b$小的时候，将会有一些线程并不用读取数据，但是*依然要为这些线程提供一个可以读的shared memory地址*。
+
+ldmatrix的输出参数是32bit通用寄存器。
+- ldmatrix读取1个$8 \times 128b$时，$8 \times 128 / 32 / 32 = 1$ 个 32 bit 通用寄存器
+- ldmatrix读取2个$8 \times 128b$时，$8 \times 128 \times 2 / 32 / 32 = 2$ 个 32 bit 通用寄存器
+- ldmatrix读取4个$8 \times 128b$时，$8 \times 128 \times 4 / 32 / 32 = 4$ 个 32 bit 通用寄存器
 
 ```c++
 ldmatrix.sync.aligned.shape.num{.trans}{.ss}.type r, [p];

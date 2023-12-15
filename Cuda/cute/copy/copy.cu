@@ -9,6 +9,56 @@
 
 using namespace cute;
 
+template <typename Element_, const int kRows_, const int kCols_,
+          const int kShmRows_, const int kShmCols_, const int kThreads>
+struct KeTraits {
+  using Element = Element_;
+
+  static constexpr int kRows = kRows_;
+  static constexpr int kCols = kCols_;
+
+  static constexpr int kShmRows = kShmRows_;
+  static constexpr int kShmCols = kShmCols_;
+
+  static const int kAccessInBits = 128;
+  static const int kElmentBits = cutlass::sizeof_bits<Element>::value;
+  static const int kNumPerAccess = kAccessInBits / kElmentBits;
+
+  static constexpr int kThreadsPerRow = kShmCols / kNumPerAccess;
+  using GmemLayoutAtom =
+      Layout<Shape<Int<kThreads / kThreadsPerRow>, Int<kThreadsPerRow>>,
+             Stride<Int<kThreadsPerRow>, _1>>;
+  using TiledCopy =
+      decltype(make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
+                               GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
+
+  // FIXME(ying): still has bug
+  // using TiledCopy = decltype(make_tiled_copy(
+  //     Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
+  //     GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
+
+  using GmemLayout =
+      Layout<Shape<Int<kShmRows>, Int<kShmCols>>, Stride<Int<kCols>, _1>>;
+  using SmemLayout =
+      Layout<Shape<Int<kShmRows>, Int<kShmCols>>, Stride<Int<kShmCols>, _1>>;
+};
+
+namespace {
+__device__ void DebugPrint(const cutlass::half_t* input, int row, int col) {
+  auto* data = reinterpret_cast<const __half*>(input);
+
+  for (int i = 0; i < row; ++i) {
+    printf("[%d]:\t", i);
+    for (int j = 0; j < col - 1; ++j) {
+      printf("%.0f,", __half2float(data[i * col + j]));
+    }
+    printf("%.0f\n", __half2float(data[(i + 1) * col - 1]));
+  }
+  printf("\n");
+}
+
+}  // namespace
+
 /*
   Each CTA loads a tile of data with a shape of `ShmShape` into shared memory
   from a larger data `src` in the global memory with a shape of `Shape`, and
@@ -17,17 +67,17 @@ using namespace cute;
   The data is stored in row-major order in `src`.
   The data is stored in row-major order in `trg`.
 */
-template <typename Shape, typename ShmShape, typename TiledCopy,
-          typename Element>
-__global__ void copy(Shape problem_shape, ShmShape shm_shape,
-                     TiledCopy tiled_copy, const Element* src, Element* trg) {
-  int rows = size<0>(problem_shape);
-  int cols = size<1>(problem_shape);
 
-  auto shm_rows = size<0>(shm_shape);
-  auto shm_cols = size<1>(shm_shape);
+template <typename Element, typename KeTraits>
+__global__ void Copy(const Element* src, Element* trg) {
+  extern __shared__ __align__(sizeof(double)) unsigned char shared_buf[];
+  auto* smem_buf = reinterpret_cast<Element*>(shared_buf);
 
-  const int shm_size = decltype(size(shm_shape))::value;
+  int rows = KeTraits::kRows;
+  int cols = KeTraits::kCols;
+
+  int shm_rows = KeTraits::kShmRows;
+  int shm_cols = KeTraits::kShmCols;
 
   const int x_block = blockIdx.x;
   const int y_block = blockIdx.y;
@@ -37,42 +87,46 @@ __global__ void copy(Shape problem_shape, ShmShape shm_shape,
 
   // Interpret the buffer as a tensor using the pointer to the starting address
   // in the global memory.
-  Layout row_major =
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(cols, 1));
-  auto gmem_tile = make_tensor(make_gmem_ptr(src + offset), row_major);
+  typename KeTraits::GmemLayout g_layout;
+  auto g_tile = make_tensor(make_gmem_ptr(src + offset), g_layout);
 
-  __shared__ Element smem_buf[shm_size];
   // shared memory is interpreted as a row major matrix
-  auto shmem_tile = make_tensor(
-      make_smem_ptr(smem_buf),
-      make_layout(make_shape(shm_rows, shm_cols), make_stride(shm_cols, 1)));
+  typename KeTraits::SmemLayout s_layout;
+  auto s_tile = make_tensor(make_smem_ptr(smem_buf), s_layout);
 
+  typename KeTraits::TiledCopy tiled_copy;
   auto loader = tiled_copy.get_thread_slice(threadIdx.x);
 
-  auto thrd_gmem = loader.partition_S(gmem_tile);
-  auto thrd_shmem = loader.partition_D(shmem_tile);
+  auto thrd_gmem = loader.partition_S(g_tile);
+  auto thrd_shmem = loader.partition_D(s_tile);
   copy(tiled_copy, thrd_gmem, thrd_shmem);
-  __syncthreads();
+  cp_async_fence();
+  cp_async_wait<0>();
 
   // store shared memory tile into global memory
-  auto gmem_tile_trg = make_tensor(make_gmem_ptr(trg + offset), row_major);
-
-  auto thrd_shmem2 = loader.partition_S(shmem_tile);
-  auto thrd_gmem2 = loader.partition_D(gmem_tile_trg);
+  auto g_tile2 = make_tensor(make_gmem_ptr(trg + offset), g_layout);
+  auto thrd_shmem2 = loader.partition_S(s_tile);
+  auto thrd_gmem2 = loader.partition_D(g_tile2);
   copy(tiled_copy, thrd_shmem2, thrd_gmem2);
+  cute::cp_async_fence();
 }
 
 int main() {
   using Element = cutlass::half_t;
-  const int kRows = 32 * 3;
-  const int kCols = 128 * 7;
-  int numel = kRows * kCols;
+  static constexpr int kRows = 16 * 2;
+  static constexpr int kCols = 16 * 3;
 
-  thrust::host_vector<Element> h_A(kRows * kCols);
+  static constexpr int kShmRows = 16;
+  static constexpr int kShmCols = 16;
+
+  static constexpr int kThreads = 32;
+
+  int numel = kRows * kCols;
+  thrust::host_vector<Element> h_A(numel);
   srand(42);
   for (int i = 0; i < h_A.size(); ++i) {
-    h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
-    // h_A[i] = __float2half(i);
+    // h_A[i] = __float2half(10 * (rand() / float(RAND_MAX)) - 5);
+    h_A[i] = __float2half(i);
   }
 
   // copy data from host to device
@@ -80,31 +134,15 @@ int main() {
   thrust::device_vector<Element> d_B(numel);
   thrust::fill(d_B.begin(), d_B.end(), static_cast<Element>(0.));
 
-  const int kThreads = 64;
-  auto shm_row = _32{};
-  auto shm_col = _128{};
-
-  // threads are laid out as a row major matrix
-  Layout thread_layout = Layout<Shape<_16, _4>, Stride<_4, _1>>{};
-  // values are laid out as a row vector, 8 values per access.
-  Layout value_layout = Layout<Shape<_1, _8>, Stride<_0, _1>>{};
-
-  auto shm_shape = make_shape(shm_row, shm_col);
-  auto problem_shape = make_shape(kRows, kCols);
-
-  // const bool Has_cp_async = true;
-  // using CopyStruct = std::conditional_t<
-  //     Has_cp_async, SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,
-  //     DefaultCopy>;
-
-  auto tiled_copy = make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
-                                    thread_layout, value_layout);
-
-  dim3 dim_grid(CEIL_DIV(kRows, shm_row), CEIL_DIV(kCols, shm_col));
+  dim3 dim_grid(CEIL_DIV(kRows, kShmRows), CEIL_DIV(kCols, kShmCols));
   dim3 dim_block(kThreads);
-  copy<<<dim_grid, dim_block>>>(problem_shape, shm_shape, tiled_copy,
-                                thrust::raw_pointer_cast(d_A.data()),
-                                thrust::raw_pointer_cast(d_B.data()));
+
+  using KeTraits_ =
+      KeTraits<Element, kRows, kCols, kShmRows, kShmCols, kThreads>;
+
+  Copy<Element, KeTraits_><<<dim_grid, dim_block, kShmRows * kShmCols>>>(
+      thrust::raw_pointer_cast(d_A.data()),
+      thrust::raw_pointer_cast(d_B.data()));
   cudaDeviceSynchronize();
 
   // unittest
@@ -115,6 +153,7 @@ int main() {
       reinterpret_cast<__half*>(thrust::raw_pointer_cast(h_B.data())),
       h_A.size()));
 
+  // std::cout << std::endl;
   // int blocks = CEIL_DIV(numel, kThreads);
   // PrintValueHost<Element><<<blocks, kThreads>>>(
   //     thrust::raw_pointer_cast(d_B.data()), kRows, kCols);
