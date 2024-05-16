@@ -117,14 +117,30 @@ void test6() {
   print_layout(d2);
 }
 
+// test nested layout
+void test7() {
+  Layout a = Layout<Shape<Shape<_2, _8>, _2>, Stride<Stride<_16, _1>, _8>>{};
+
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 8; j++) {
+      for (int k = 0; k < 2; k++) {
+        auto idx = make_coord(make_coord(i, j), k);
+        std::cout << "[" << i << ", " << j << ", " << k << "] = " << a(idx)
+                  << std::endl;
+      }
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   // test1();
   // test2();
   // test3();
   // test4();
   // test5();
+  // test6();
 
-  test6();
+  test7();
 
   return 0;
 }
