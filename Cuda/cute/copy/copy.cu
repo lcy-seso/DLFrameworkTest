@@ -25,18 +25,21 @@ struct KeTraits {
   static const int kNumPerAccess = kAccessInBits / kElmentBits;
 
   static constexpr int kThreadsPerRow = kShmCols / kNumPerAccess;
-  using GmemLayoutAtom =
+  using ThreadLayout =
       Layout<Shape<Int<kThreads / kThreadsPerRow>, Int<kThreadsPerRow>>,
              Stride<Int<kThreadsPerRow>, _1>>;
-  using TiledCopy =
-      decltype(make_tiled_copy(Copy_Atom<DefaultCopy, Element>{},
-                               GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
 
-  // FIXME(ying): still has bug
-  // using TiledCopy = decltype(make_tiled_copy(
-  //     Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
-  //     GmemLayoutAtom{}, Layout<Shape<_1, _8>>{}));
+  // global to shared
+  using TiledCopyG2S = decltype(make_tiled_copy(
+      Copy_Atom<SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>, Element>{},
+      ThreadLayout{}, Layout<Shape<_1, Int<kNumPerAccess>>>{}));
 
+  // shared to global
+  using TiledCopyS2G = decltype(make_tiled_copy(
+      Copy_Atom<DefaultCopy, Element>{}, ThreadLayout{},
+      Layout<Shape<_1, Int<kNumPerAccess>>>{}));
+
+  // Row-major
   using GmemLayout =
       Layout<Shape<Int<kShmRows>, Int<kShmCols>>, Stride<Int<kCols>, _1>>;
   using SmemLayout =
@@ -73,11 +76,11 @@ __global__ void Copy(const Element* src, Element* trg) {
   extern __shared__ __align__(sizeof(double)) unsigned char shared_buf[];
   auto* smem_buf = reinterpret_cast<Element*>(shared_buf);
 
-  int rows = KeTraits::kRows;
-  int cols = KeTraits::kCols;
+  const int rows = KeTraits::kRows;
+  const int cols = KeTraits::kCols;
 
-  int shm_rows = KeTraits::kShmRows;
-  int shm_cols = KeTraits::kShmCols;
+  const int shm_rows = KeTraits::kShmRows;
+  const int shm_cols = KeTraits::kShmCols;
 
   const int x_block = blockIdx.x;
   const int y_block = blockIdx.y;
@@ -94,7 +97,7 @@ __global__ void Copy(const Element* src, Element* trg) {
   typename KeTraits::SmemLayout s_layout;
   auto s_tile = make_tensor(make_smem_ptr(smem_buf), s_layout);
 
-  typename KeTraits::TiledCopy tiled_copy;
+  typename KeTraits::TiledCopyG2S tiled_copy;
   auto loader = tiled_copy.get_thread_slice(threadIdx.x);
 
   auto thrd_gmem = loader.partition_S(g_tile);
@@ -103,18 +106,29 @@ __global__ void Copy(const Element* src, Element* trg) {
   cp_async_fence();
   cp_async_wait<0>();
 
-  // store shared memory tile into global memory
-  auto g_tile2 = make_tensor(make_gmem_ptr(trg + offset), g_layout);
-  auto thrd_shmem2 = loader.partition_S(s_tile);
-  auto thrd_gmem2 = loader.partition_D(g_tile2);
-  copy(tiled_copy, thrd_shmem2, thrd_gmem2);
-  cute::cp_async_fence();
+  {  // store shared memory tile into global memory
+    auto g_tile = make_tensor(make_gmem_ptr(trg + offset), g_layout);
+    typename KeTraits::TiledCopyS2G tiled_copy;
+    auto storer = tiled_copy.get_thread_slice(threadIdx.x);
+
+    auto thrd_shmem = storer.partition_S(s_tile);
+    auto thrd_gmem = storer.partition_D(g_tile);
+
+    copy(tiled_copy, thrd_shmem, thrd_gmem);
+    cute::cp_async_fence();
+  }
 }
 
 int main() {
   using Element = cutlass::half_t;
-  static constexpr int kRows = 16 * 2;
-  static constexpr int kCols = 16 * 3;
+  static constexpr int kRows = 32;
+  static constexpr int kCols = 48;
+
+  // cute's layout be default is column major
+  auto layout = make_layout(make_shape(kRows, kCols));
+  std::cout << "layout: ";
+  print(layout);
+  std::cout << std::endl;
 
   static constexpr int kShmRows = 16;
   static constexpr int kShmCols = 16;
@@ -145,6 +159,8 @@ int main() {
       thrust::raw_pointer_cast(d_B.data()));
   cudaDeviceSynchronize();
 
+#define DEBUG_
+#ifdef DEBUG
   // unittest
   thrust::host_vector<Element> h_B(numel);
   h_B = d_B;
@@ -153,10 +169,11 @@ int main() {
       reinterpret_cast<__half*>(thrust::raw_pointer_cast(h_B.data())),
       h_A.size()));
 
-  // std::cout << std::endl;
-  // int blocks = CEIL_DIV(numel, kThreads);
-  // PrintValueHost<Element><<<blocks, kThreads>>>(
-  //     thrust::raw_pointer_cast(d_B.data()), kRows, kCols);
+  std::cout << std::endl;
+  int blocks = CEIL_DIV(numel, kThreads);
+  PrintValueHost<Element><<<blocks, kThreads>>>(
+      thrust::raw_pointer_cast(d_B.data()), kRows, kCols);
+#endif
 
   return 0;
 }
