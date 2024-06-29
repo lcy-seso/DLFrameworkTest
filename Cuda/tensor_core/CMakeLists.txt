@@ -35,4 +35,4 @@ include_directories(
 include_directories("../../")
 cuda_add_executable(mma mma.cu)
 
-cuda_add_executable(ldmatrix ldmatrix.cu)
+# cuda_add_executable(ldmatrix ldmatrix.cu)

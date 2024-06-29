@@ -46,8 +46,27 @@ __global__ void TestMmaInstruction(const half* __restrict__ A,
         : "=r"(RA[0]), "=r"(RA[1]), "=r"(RA[2]), "=r"(RA[3])
         : "r"(A_smem_lane_addr));
 
+    // if (threadIdx.x == 0) {
+    //   printf("A_smem:\n");
+    //   for (int i = 0; i < MMA_M; ++i) {
+    //     for (int j = 0; j < MMA_K; ++j) {
+    //       printf("%.0f, ", __half2float(A_smem[i][j]));
+    //     }
+    //     printf("\n");
+    //   }
+
+    //   printf("\nB_smem:\n");
+    //   for (int i = 0; i < MMA_N; ++i) {
+    //     for (int j = 0; j < MMA_K; ++j) {
+    //       printf("%.0f, ", __half2float(B_smem[i][j]));
+    //     }
+    //     printf("\n");
+    //   }
+    //   printf("\n");
+    // }
+
     // half* rA = (half*)(RA);
-    // printf("[%d]: %.0f, %.0f, %.0f, %.0f, %.0f, %.0f, %.0f, %.0f\n",
+    // printf("A-[%d]: %.0f, %.0f, %.0f, %.0f, %.0f, %.0f, %.0f, %.0f\n",
     //        threadIdx.x, __half2float(rA[0]), __half2float(rA[1]),
     //        __half2float(rA[2]), __half2float(rA[3]), __half2float(rA[4]),
     //        __half2float(rA[5]), __half2float(rA[6]), __half2float(rA[7]));
@@ -59,13 +78,13 @@ __global__ void TestMmaInstruction(const half* __restrict__ A,
                  : "r"(B_smem_lane_addr));
 
     // half* rB = (half*)(RB);
-    // printf("[%d]: %.0f, %.0f, %.0f, %.0f\n", threadIdx.x,
+    // printf("B-[%d]: %.0f, %.0f, %.0f, %.0f\n", threadIdx.x,
     // __half2float(rB[0]),
     //        __half2float(rB[1]), __half2float(rB[2]), __half2float(rB[3]));
 
     asm volatile(
-        "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0, %1}, {%2, %3, "
-        "%4, %5}, {%6, %7}, {%8, %9};\n"
+        "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16"
+        " {%0, %1}, {%2, %3, %4, %5}, {%6, %7}, {%8, %9};\n"
         : "=r"(RC[0]), "=r"(RC[1])
         : "r"(RA[0]), "r"(RA[1]), "r"(RA[2]), "r"(RA[3]), "r"(RB[0]),
           "r"(RB[1]), "r"(RC[0]), "r"(RC[1]));
@@ -127,9 +146,9 @@ int main() {
   thrust::host_vector<Element> hC1(MMA_M * MMA_N);
   hC1 = C;
 
-  // std::cout << "mma results:" << std::endl;
-  // PrintMatrix(thrust::raw_pointer_cast(hC1.data()), MMA_M, MMA_N, true);
-  // std::cout << std::endl;
+  std::cout << "mma results:" << std::endl;
+  PrintMatrix(thrust::raw_pointer_cast(hC1.data()), MMA_M, MMA_N, true);
+  std::cout << std::endl;
 
   thrust::host_vector<float> hC2(MMA_M * MMA_N);
   MmaRef(thrust::raw_pointer_cast(hA.data()),
