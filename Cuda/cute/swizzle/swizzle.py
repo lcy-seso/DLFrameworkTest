@@ -80,4 +80,5 @@ def print_result(rows, cols, swizzle_func, row_major=True):
 
 if __name__ == "__main__":
     swizzle = Swizzle(2, 2, 3)
-    print_result(4, 8, swizzle)
+    # print_result(4, 8, swizzle)
+    print(bin(1<<3))
