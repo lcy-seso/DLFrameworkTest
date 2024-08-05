@@ -8,7 +8,7 @@
 
 每个线程用向量化指令访问128b数据，$128 / 32 = 4 \ \text{bank}$，每个线程访问4个bank，8个线程访问一条shared memory cache line。
 
-1. 当数据类型是半精度时，$M=3$，因为$2^3=8 \times 16 = 128 \ \text{b}$，128 b 访存指令读取8个元素，这些元素为一组。
+1. 当数据类型是半精度时，$M=3$，因为$2^3=8 \times 16 = 128 \ \text{b}$，128-bit 访存指令读取8个元素，这些元素为一组。
 1. $S = 3$，1024 / 128 = 8，8个线程访问一整条shared memory cache line
 1. 假如原始输入数据有形状，在内存中连续的维度是64，并且数据类型为半精度，$64 \times 16 / 1024 = 1$，一个连续维度就占1个shared memory cache line。
 
@@ -38,11 +38,13 @@ Fig. 原始的offset和swizzled offset之间的关系
 
 ## 对16x16数据块进行swizzle
 
+有一个16x16的数据块，进一步以$1 \times 8$为粒度被分成了$16 \times 2$个块（**这里我们先模糊行优先/列优先，具体对应到行优先/列优先时，只需要对这两个维度做相应的调整和适配**）。我们的目标是<font color=red>将这个$16 \times 16$的数据块以bank-conflict free的方式存储在shared memory中</font>。
+
 这里我们考虑以下假设：
 
-1. 将GPU的shared memory看作由8个bank构成，于是每个bank位宽128 bits；
-2. 数据是以半精度存储，于是$1024/16=64$个半精度正好存储在一条shared memory cache line里面；
-3. 单线程访问128bit，于是8线程并发访存一次的数据恰好可以写入一整行shared memory cache line；
+1. 将GPU的shared memory看作由8个bank构成，于是每个bank位宽128 bits，正好对应了上面提到的大小为$1\times 8$的一段数据；
+1. 数据是以半精度存储，于是$1024/16=64$个半精度正好存储在一条shared memory cache line里面
+1. 单线程访问128bit，<font color="red">于是8线程并发访存一次的数据恰好可以写入一整行shared memory cache line，而这一点是我们需要保证的</font>，这八个线程写入shared memory的bank id必须是0~8这个8个bank id的一个permutation，不可以落入同一个bank。
 
 <p align="center">
 <img src="figures/shared_memory_for_2-3-3.png" width=30%><br>
@@ -89,6 +91,11 @@ swizzled index（**下面的表格用红色和黑色将数据分成了两部分�
 |**Access-1**|<font color=red>9</font>|<font color=red>8</font>|<font color=red>11</font>|<font color=red>10</font>|13|12|15|14|
 |**Access-2**|<font color=red>18</font>|<font color=red>19</font>|<font color=red>16</font>|<font color=red>17</font>|22|23|20|21|
 |**Access-3**|<font color=red>27</font>|<font color=red>26</font>|<font color=red>25</font>|<font color=red>24</font>|31|30|29|28|
+
+<p align="center">
+<img src="figures/store_to_shared_memory.png"><br>
+Fig. 以Global Memory上row major的16x16数据块为源，线程分数据方式以及shared memory中数据存储顺序；
+</p>
 
 # Reference
 
