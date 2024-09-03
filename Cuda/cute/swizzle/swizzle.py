@@ -6,7 +6,7 @@ def shiftl(a, s):
     return a << s if s > 0 else shiftr(a, -s)
 
 
-## A generic Swizzle functor
+# A generic Swizzle functor
 # 0bxxxxxxxxxxxxxxxYYYxxxxxxxZZZxxxx
 #                               ^--^  Base is the number of least-sig bits to keep constant
 #                  ^-^       ^-^      Bits is the number of bits in the mask
@@ -79,6 +79,10 @@ def print_result(rows, cols, swizzle_func, row_major=True):
 
 
 if __name__ == "__main__":
-    swizzle = Swizzle(2, 2, 3)
+    # swizzle = Swizzle(2, 3, 3)
     # print_result(4, 8, swizzle)
-    print(bin(1<<3))
+
+    swizzle = Swizzle(3, 2, 3)
+    print_result(8, 8, swizzle)
+
+    # print(bin(1<<3))
