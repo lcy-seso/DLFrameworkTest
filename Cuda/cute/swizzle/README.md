@@ -105,7 +105,7 @@ Fig. 以Global Memory上row major的16x16数据块为源，线程分数据方式
 <img src="figures/store.png" width=90%>
 </p>
 
-|0|1|32|33|
+<!-- |0 |1|32|33|
 |:--|:--|:--|:--|
 |2|3|34|35|
 |4|5|36|37|
@@ -121,7 +121,26 @@ Fig. 以Global Memory上row major的16x16数据块为源，线程分数据方式
 |27|26|59|58|
 |25|24|57|56|
 |31|30|63|62|
-|29|28|61|60|
+|29|28|61|60| -->
+
+|[original, new]|[original, new]|[original, new]|[original, new]|
+|:--:|:--:|:--:|:--:|
+[0, 0]|[1, 1]|[2, 32]|[3, 33]|
+[4, 2]|[5, 3]|[6, 34]|[7, 35]|
+[8, 4]|[9, 5]|[10, 36]|[11, 37]|
+[12, 6]|[13, 7]|[14, 38]|[15, 39]|
+[16, 9]|[17, 8]|[18, 41]|[19, 40]|
+[20, 11]|[21, 10]|[22, 43]|[23, 42]|
+[24, 13]|[25, 12]|[26, 45]|[27, 44]|
+[28, 15]|[29, 14]|[30, 47]|[31, 46]|
+[32, 18]|[33, 19]|[34, 50]|[35, 51]|
+[36, 16]|[37, 17]|[38, 48]|[39, 49]|
+[40, 22]|[41, 23]|[42, 54]|[43, 55]|
+[44, 20]|[45, 21]|[46, 52]|[47, 53]|
+[48, 27]|[49, 26]|[50, 59]|[51, 58]|
+[52, 25]|[53, 24]|[54, 57]|[55, 56]|
+[56, 31]|[57, 30]|[58, 63]|[59, 62]|
+[60, 29]|[61, 28]|[62, 61]|[63, 60]|
 
 计算swizzle的过程中：
 
@@ -133,7 +152,7 @@ Fig. 以Global Memory上row major的16x16数据块为源，线程分数据方式
 这里我们假设shared memory一个bank位宽128-bit。shared memory cache line含有8个bank。一个BaseTile的起始地址对齐到shared memory的bank 0。下图每一个小方格是128 bits数据，由两个线程写入shared memory中一个bank。
 
 <p align="center">
-<img src="figures/stored_data_distribution.png" width=50%>
+<img src="figures/stored_data_distribution.png">
 </p>
 
 上图红色方框圈起来的是一条 shared memory cache line。register-to-shared store的时候由16个线程写入同一条shared memory cache line。shared-to-global store的时候由8个线程读取。
