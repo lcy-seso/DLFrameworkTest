@@ -1,3 +1,6 @@
 *.pyc
-log
+*.log
 tensorflow_env
+.vscode
+_build/
+build/
