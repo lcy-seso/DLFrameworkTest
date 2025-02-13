@@ -1,21 +1,15 @@
 #include "cuda_utils.cuh"
 #include "hopper_gemm.cuh"
 
+#include <cute/arch/cluster_sm90.hpp>
+// #include <cute/arch/copy_sm90.hpp>
+// #include <cutlass/arch/barrier.h>
+#include <cutlass/cluster_launch.hpp>
+#include <cutlass/cutlass.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
 using namespace cute;
-
-namespace {
-template <typename T>
-struct Params {
-  int M, N, K;
-  T* C;
-  const T alpha;
-  const T beta;
-};
-}  // namespace
-
 // shared storage
 template <typename T, typename SmemLayoutA, typename SmemLayoutB>
 struct SharedStorage {
@@ -29,9 +23,13 @@ struct SharedStorage {
 };
 
 // kernel traits
-template <typename T, int kBlockM_, int kBlockN_, int kBlockK_>
+template <typename T, const int kM_, const int kN_, const int kK_,
+          const int kBlockM_, const int kBlockN_, const int kBlockK_>
 struct KernelTraits {
-  using DType = T;
+  static constexpr int kM = kM_;
+  static constexpr int kN = kN_;
+  static constexpr int kK = kK_;
+
   static constexpr int kBlockM = kBlockM_;
   static constexpr int kBlockN = kBlockN_;
   static constexpr int kBlockK = kBlockK_;
@@ -76,60 +74,58 @@ struct KernelTraits {
   static constexpr int smem_size = sizeof(SharedStorage);
 };
 
-template <typename T>
-void hopper_gemm(int m, int n, int k, const T* alpha, const T* A, int lda,
-                 const T* B, int ldb, const T* beta, T* C, int ldc,
-                 cudaStream_t stream) {
-  using ParamsT = Params<T>;
-  ParamsT params = {m, n, k, C, *alpha, *beta};
+template <typename T, const int kM, const int kN, const int kK>
+void hopper_gemm(const T* A, const T* B, T* C) {
+  // int lda = kK;  // row major
+  // int ldb = kK;  // column major
+  // int ldc = kN;  // row major
 
   // Block shape and cta tiler
   constexpr int kBlockM_ = 256;
   constexpr int kBlockN_ = 128;
   constexpr int kBlockK_ = 64;
 
-  using Kernel_traits = KernelTraits<T, kBlockM_, kBlockN_, kBlockK_>;
+  using Traits = KernelTraits<T, kM, kN, kK, kBlockM_, kBlockN_, kBlockK_>;
 
-  using SmemLayoutA = typename Kernel_traits::SmemLayoutA;
-  using SmemLayoutB = typename Kernel_traits::SmemLayoutB;
-  using TiledMMA = typename Kernel_traits::TiledMMA;
+  using SmemLayoutA = typename Traits::SmemLayoutA;
+  using SmemLayoutB = typename Traits::SmemLayoutB;
 
-  Tensor mA = make_tensor(make_gmem_ptr(A), make_shape(params.M, params.K),
-                          make_stride(lda, _1{}));
-  Tensor mB = make_tensor(make_gmem_ptr(B), make_shape(params.N, params.K),
-                          make_stride(ldb, _1{}));
+  using TiledMMA = typename Traits::TiledMMA;
+  Tensor mA = make_tensor(make_gmem_ptr(A), Shape<Int<kM>, Int<kK>>{},
+                          Stride<Int<kK>, _1>{});
+  // Interpret the column-major matrix B with shape [kK, kN] as a row-major
+  // matrix B with shape [kN, kK]
+  Tensor mB = make_tensor(make_gmem_ptr(B), Shape<Int<kN>, Int<kK>>{},
+                          Stride<Int<kK>, _1>{});
 
   // Finally we create tma_load
   auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
-
   auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
 
-  // Launch parameter setup
-  constexpr int smem_size = Kernel_traits::smem_size;
-  dim3 block{cute::size(TiledMMA{}), 1U, 1U};
-  dim3 cluster{1, 1, 1};
-  dim3 grid{utils::ceil_div(params.N, kBlockN_),
-            utils::ceil_div(params.M, kBlockM_), 1U};
+  // // Launch parameter setup
+  // constexpr int smem_size = Traits::smem_size;
+  // dim3 block{cute::size(TiledMMA{}), 1U, 1U};
+  // dim3 cluster{1, 1, 1};
+  // dim3 grid{utils::ceil_div(kN, kBlockN_), utils::ceil_div(kM, kBlockM_),
+  // 1U};
 
-  cutlass::ClusterLaunchParams launch_params{grid, block, cluster, smem_size,
-                                             stream};
+  // void const* kernel = reinterpret_cast<void const*>(
+  //     &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
+  //                          decltype(tma_load_B)>);
 
-  void const* kernel = reinterpret_cast<void const*>(
-      &ke_cute_hopper_gemm<ParamsT, Kernel_traits, decltype(tma_load_A),
-                           decltype(tma_load_B)>);
+  // if (smem_size >= 48 * 1024) {
+  //   CUTE_CHECK_ERROR(cudaFuncSetAttribute(
+  //       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+  // }
 
-  if (smem_size >= 48 * 1024) {
-    CUTE_CHECK_ERROR(cudaFuncSetAttribute(
-        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-  }
+  // cutlass::ClusterLaunchParams launch_params{grid, block, cluster,
+  // smem_size}; cutlass::Status status = cutlass::launch_kernel_on_cluster(
+  //     launch_params, kernel, tma_load_A, tma_load_B);
+  // CUTE_CHECK_LAST();
 
-  cutlass::Status status = cutlass::launch_kernel_on_cluster(
-      launch_params, kernel, params, tma_load_A, tma_load_B);
-  CUTE_CHECK_LAST();
-
-  if (status != cutlass::Status::kSuccess) {
-    std::cerr << "Kernel launch failed with status: " << std::endl;
-  }
+  // if (status != cutlass::Status::kSuccess) {
+  //   std::cerr << "Kernel launch failed with status: " << std::endl;
+  // }
 }
 
 int main() {
@@ -156,16 +152,8 @@ int main() {
   thrust::device_vector<DType> d_b = h_b;
   thrust::device_vector<DType> d_c = h_c;
 
-  DType alpha = static_cast<DType>(1.0);
-  DType beta = static_cast<DType>(0.0);
-
-  int lda = kK;  // row major
-  int ldb = kK;  // column major
-  int ldc = kN;  // row major
-
-  cudaStream_t stream = 0;
-  hopper_gemm<DType>(kM, kN, kK, &alpha, thrust::raw_pointer_cast(d_a.data()),
-                     lda, thrust::raw_pointer_cast(d_b.data()), ldb, &beta,
-                     thrust::raw_pointer_cast(d_c.data()), ldc, stream);
+  hopper_gemm<DType, kM, kN, kK>(thrust::raw_pointer_cast(d_a.data()),
+                                 thrust::raw_pointer_cast(d_b.data()),
+                                 thrust::raw_pointer_cast(d_c.data()));
   return 0;
 }

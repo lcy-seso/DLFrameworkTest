@@ -15,7 +15,10 @@ if [ -d "CMakeFiles" ]; then
     rm -rf CMakeFiles
 fi
 
-cmake ..
-make -j96 2>&1 | tee ../build.log
+cmake -DCMAKE_C_COMPILER=`which gcc` \
+   -DCMAKE_CXX_COMPILER=`which g++` \
+   .. 2>&1 | tee ../cmake.log
+
+make -j 96 2>&1 | tee ../build.log
 
 cd ../
