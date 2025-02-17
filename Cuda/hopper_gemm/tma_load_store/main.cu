@@ -73,7 +73,6 @@ struct KernelTraits {
 
 template <typename T, const int kM, const int kN, const int kK>
 void hopper_gemm(const T* A, const T* B, T* C) {
-  // Block shape and cta tiler
   constexpr int kTM = 256;
   constexpr int kTN = 128;
   constexpr int kTK = 64;
