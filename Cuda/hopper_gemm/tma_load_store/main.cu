@@ -138,6 +138,22 @@ void hopper_gemm(const T* A, const T* B, T* C) {
 }
 
 int main() {
+  cudaDeviceProp props;
+  int current_device_id;
+  cudaGetDevice(&current_device_id);
+  cudaGetDeviceProperties(&props, current_device_id);
+  cudaError_t error = cudaGetDeviceProperties(&props, 0);
+
+  if (props.major != 9 || props.minor != 0) {
+    std::cerr << "This example requires a GPU of NVIDIA's Hopper Architecture "
+                 "(compute capability 90).\n";
+    return 0;
+  } else {
+    std::cout << "CUDA Device: " << props.name << std::endl;
+    std::cout << "CUDA Compute Capability: " << props.major << "."
+              << props.minor << std::endl;
+  }
+
   using DType = cutlass::half_t;
   static constexpr int kM = 8192;
   static constexpr int kN = 8192;
