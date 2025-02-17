@@ -6,9 +6,9 @@ using namespace cute;
 
 template <typename T, typename KernelTraits, typename TmaLoadA,
           typename TmaLoadB>
-__global__ void ke_cute_hopper_gemm(__grid_constant__ TmaLoadA const tma_load_A,
-                                    __grid_constant__ TmaLoadB const tma_load_B,
-                                    T* gC_ptr) {
+__global__ void ke_cute_hopper_gemm(
+    CUTE_GRID_CONSTANT TmaLoadA const tma_load_A,
+    CUTE_GRID_CONSTANT TmaLoadB const tma_load_B, T* gC_ptr) {
   using SmemLayoutA = typename KernelTraits::SmemLayoutA;
   using SmemLayoutB = typename KernelTraits::SmemLayoutB;
 

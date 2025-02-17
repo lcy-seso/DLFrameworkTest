@@ -1,16 +1,26 @@
 #include "cuda_utils.cuh"
 #include "hopper_gemm.cuh"
 
-#include <cute/arch/cluster_sm90.hpp>
+// #include <cute/arch/cluster_sm90.hpp>
 // #include <cute/arch/copy_sm90.hpp>
+// #include <cute/tensor.hpp>
 // #include <cutlass/arch/barrier.h>
-#include <cutlass/cluster_launch.hpp>
-#include <cutlass/cutlass.h>
+// #include <cutlass/cluster_launch.hpp>
+// #include <cutlass/cutlass.h>
+
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
 using namespace cute;
-// shared storage
+
+#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900)
+constexpr int cuda_arch = 90;
+#elif (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 860)
+constexpr int cuda_arch = 86;
+#else
+constexpr int cuda_arch = 0;
+#endif
+
 template <typename T, typename SmemLayoutA, typename SmemLayoutB>
 struct SharedStorage {
   // data storage
@@ -24,15 +34,15 @@ struct SharedStorage {
 
 // kernel traits
 template <typename T, const int kM_, const int kN_, const int kK_,
-          const int kBlockM_, const int kBlockN_, const int kBlockK_>
+          const int kTM_, const int kTN_, const int kTK_>
 struct KernelTraits {
   static constexpr int kM = kM_;
   static constexpr int kN = kN_;
   static constexpr int kK = kK_;
 
-  static constexpr int kBlockM = kBlockM_;
-  static constexpr int kBlockN = kBlockN_;
-  static constexpr int kBlockK = kBlockK_;
+  static constexpr int kTM = kTM_;
+  static constexpr int kTN = kTN_;
+  static constexpr int kTK = kTK_;
 
   // TiledMMA
   using mma_op =
@@ -60,12 +70,11 @@ struct KernelTraits {
       decltype(make_tiled_mma(mma_atom{}, MMA_EU_RepeatT{}, MMA_V_RepeatT{}));
 
   using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<T>;
-
   using SmemLayoutA = decltype(tile_to_shape(
-      SmemLayoutAtom{}, make_shape(Int<kBlockM>{}, Int<kBlockK>{})));
+      SmemLayoutAtom{}, make_shape(Int<kTM>{}, Int<kTK>{})));
 
   using SmemLayoutB = decltype(tile_to_shape(
-      SmemLayoutAtom{}, make_shape(Int<kBlockN>{}, Int<kBlockK>{})));
+      SmemLayoutAtom{}, make_shape(Int<kTN>{}, Int<kTK>{})));
 
   // SharedStorage
   using SharedStorage = SharedStorage<T, SmemLayoutA, SmemLayoutB>;
@@ -76,16 +85,12 @@ struct KernelTraits {
 
 template <typename T, const int kM, const int kN, const int kK>
 void hopper_gemm(const T* A, const T* B, T* C) {
-  // int lda = kK;  // row major
-  // int ldb = kK;  // column major
-  // int ldc = kN;  // row major
-
   // Block shape and cta tiler
-  constexpr int kBlockM_ = 256;
-  constexpr int kBlockN_ = 128;
-  constexpr int kBlockK_ = 64;
+  constexpr int kTM = 256;
+  constexpr int kTN = 128;
+  constexpr int kTK = 64;
 
-  using Traits = KernelTraits<T, kM, kN, kK, kBlockM_, kBlockN_, kBlockK_>;
+  using Traits = KernelTraits<T, kM, kN, kK, kTM, kTN, kTK>;
 
   using SmemLayoutA = typename Traits::SmemLayoutA;
   using SmemLayoutB = typename Traits::SmemLayoutB;
@@ -98,16 +103,18 @@ void hopper_gemm(const T* A, const T* B, T* C) {
   Tensor mB = make_tensor(make_gmem_ptr(B), Shape<Int<kN>, Int<kK>>{},
                           Stride<Int<kK>, _1>{});
 
-  // Finally we create tma_load
-  auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
-  auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
+  std::cout << "cuda_arch: " << cuda_arch << std::endl;
 
-  // // Launch parameter setup
+  // create tma_load
+  // auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
+  // auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
+
+  // Launch parameter setup
   // constexpr int smem_size = Traits::smem_size;
   // dim3 block{cute::size(TiledMMA{}), 1U, 1U};
   // dim3 cluster{1, 1, 1};
-  // dim3 grid{utils::ceil_div(kN, kBlockN_), utils::ceil_div(kM, kBlockM_),
-  // 1U};
+  // dim3 grid{utils::ceil_div(kN, kBlockN_), utils::ceil_div(kM,
+  // kBlockM_), 1U};
 
   // void const* kernel = reinterpret_cast<void const*>(
   //     &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
@@ -115,11 +122,13 @@ void hopper_gemm(const T* A, const T* B, T* C) {
 
   // if (smem_size >= 48 * 1024) {
   //   CUTE_CHECK_ERROR(cudaFuncSetAttribute(
-  //       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+  //       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+  //       smem_size));
   // }
 
   // cutlass::ClusterLaunchParams launch_params{grid, block, cluster,
-  // smem_size}; cutlass::Status status = cutlass::launch_kernel_on_cluster(
+  // smem_size}; cutlass::Status status =
+  // cutlass::launch_kernel_on_cluster(
   //     launch_params, kernel, tma_load_A, tma_load_B);
   // CUTE_CHECK_LAST();
 

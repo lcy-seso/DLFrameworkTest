@@ -22,3 +22,5 @@ cmake -DCMAKE_C_COMPILER=`which gcc` \
 make -j 96 2>&1 | tee ../build.log
 
 cd ../
+
+./_build/hopper_gemm
