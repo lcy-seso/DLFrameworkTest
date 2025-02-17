@@ -1,25 +1,13 @@
 #include "cuda_utils.cuh"
 #include "hopper_gemm.cuh"
 
-// #include <cute/arch/cluster_sm90.hpp>
-// #include <cute/arch/copy_sm90.hpp>
-// #include <cute/tensor.hpp>
-// #include <cutlass/arch/barrier.h>
-// #include <cutlass/cluster_launch.hpp>
-// #include <cutlass/cutlass.h>
-
+#include <cute/arch/copy_sm90.hpp>
+#include <cutlass/cluster_launch.hpp>
+#include <cutlass/cutlass.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
 using namespace cute;
-
-#if (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 900)
-constexpr int cuda_arch = 90;
-#elif (defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 860)
-constexpr int cuda_arch = 86;
-#else
-constexpr int cuda_arch = 0;
-#endif
 
 template <typename T, typename SmemLayoutA, typename SmemLayoutB>
 struct SharedStorage {
@@ -103,38 +91,33 @@ void hopper_gemm(const T* A, const T* B, T* C) {
   Tensor mB = make_tensor(make_gmem_ptr(B), Shape<Int<kN>, Int<kK>>{},
                           Stride<Int<kK>, _1>{});
 
-  std::cout << "cuda_arch: " << cuda_arch << std::endl;
-
   // create tma_load
-  // auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
-  // auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
+  auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
+  auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
 
   // Launch parameter setup
-  // constexpr int smem_size = Traits::smem_size;
-  // dim3 block{cute::size(TiledMMA{}), 1U, 1U};
-  // dim3 cluster{1, 1, 1};
-  // dim3 grid{utils::ceil_div(kN, kBlockN_), utils::ceil_div(kM,
-  // kBlockM_), 1U};
+  constexpr int smem_size = Traits::smem_size;
+  dim3 block{cute::size(TiledMMA{}), 1U, 1U};
+  dim3 cluster{1, 1, 1};
+  dim3 grid{utils::ceil_div(kN, kTN), utils::ceil_div(kM, kTM), 1U};
 
-  // void const* kernel = reinterpret_cast<void const*>(
-  //     &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
-  //                          decltype(tma_load_B)>);
+  void const* kernel = reinterpret_cast<void const*>(
+      &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
+                           decltype(tma_load_B)>);
 
-  // if (smem_size >= 48 * 1024) {
-  //   CUTE_CHECK_ERROR(cudaFuncSetAttribute(
-  //       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
-  //       smem_size));
-  // }
+  if (smem_size >= 48 * 1024) {
+    CUTE_CHECK_ERROR(cudaFuncSetAttribute(
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+  }
 
-  // cutlass::ClusterLaunchParams launch_params{grid, block, cluster,
-  // smem_size}; cutlass::Status status =
-  // cutlass::launch_kernel_on_cluster(
-  //     launch_params, kernel, tma_load_A, tma_load_B);
-  // CUTE_CHECK_LAST();
+  cutlass::ClusterLaunchParams launch_params{grid, block, cluster, smem_size};
+  cutlass::Status status = cutlass::launch_kernel_on_cluster(
+      launch_params, kernel, tma_load_A, tma_load_B);
+  CUTE_CHECK_LAST();
 
-  // if (status != cutlass::Status::kSuccess) {
-  //   std::cerr << "Kernel launch failed with status: " << std::endl;
-  // }
+  if (status != cutlass::Status::kSuccess) {
+    std::cerr << "Kernel launch failed with status: " << std::endl;
+  }
 }
 
 int main() {
@@ -144,15 +127,16 @@ int main() {
   cudaGetDeviceProperties(&props, current_device_id);
   cudaError_t error = cudaGetDeviceProperties(&props, 0);
 
+  std::cout << "CUDA Device: " << props.name << std::endl;
+  std::cout << "CUDA Compute Capability: " << props.major << ".";
+
   if (props.major != 9 || props.minor != 0) {
-    std::cerr << "This example requires a GPU of NVIDIA's Hopper Architecture "
+    std::cerr << std::endl
+              << "This example requires a GPU of NVIDIA's Hopper Architecture "
                  "(compute capability 90).\n";
     return 0;
-  } else {
-    std::cout << "CUDA Device: " << props.name << std::endl;
-    std::cout << "CUDA Compute Capability: " << props.major << "."
-              << props.minor << std::endl;
-  }
+  } else
+    std::cout << props.minor << std::endl;
 
   using DType = cutlass::half_t;
   static constexpr int kM = 8192;
