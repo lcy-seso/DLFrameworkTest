@@ -21,6 +21,13 @@ cmake -DCMAKE_C_COMPILER=`which gcc` \
 
 make -j 96 2>&1 | tee ../build.log
 
-cd ../
+# ./_build/hopper_gemm
 
-./_build/hopper_gemm
+if [ -f "tma_load" ]; then
+    echo "Run the executable"
+    ./tma_load 2>&1 | tee ../run.log
+else
+    echo "Build failed"
+fi
+
+cd ../
