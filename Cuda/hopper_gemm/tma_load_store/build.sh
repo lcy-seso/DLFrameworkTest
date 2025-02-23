@@ -17,15 +17,15 @@ fi
 
 cmake -DCMAKE_C_COMPILER=`which gcc` \
    -DCMAKE_CXX_COMPILER=`which g++` \
-   .. 2>&1 | tee ../cmake.log
+   .. 2>&1 | tee cmake.log
 
-make -j 96 2>&1 | tee ../build.log
+make -j 96 2>&1 | tee build.log
 
 # ./_build/hopper_gemm
 
 if [ -f "tma_load" ]; then
     echo "Run the executable"
-    ./tma_load 2>&1 | tee ../run.log
+    ./tma_load 2>&1 | tee run.log
 else
     echo "Build failed"
 fi
