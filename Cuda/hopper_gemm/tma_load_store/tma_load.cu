@@ -1,28 +1,26 @@
-#include "cute/arch/cluster_sm90.hpp"
-#include "cute/tensor.hpp"
-
+#include <cute/arch/cluster_sm90.hpp>
+#include <cute/tensor.hpp>
 #include <cutlass/cutlass.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
 #include <cstdio>
 
+using namespace cute;
+
 template <class T, class TensorX, class GmemLayout, class SmemLayout,
           class TmaLoad>
 __global__ static void tma_kernel(TensorX tX, GmemLayout gmem_layout,
                                   SmemLayout smem_layout,
-                                  CUTE_GRID_CONSTANT TmaLoad tma_load) {
-  using namespace cute;
-
+                                  CUTE_GRID_CONSTANT const TmaLoad tma_load) {
   __shared__ T smem[cosize_v<SmemLayout>];
   __shared__ uint64_t tma_load_mbar[1];
 
   auto sX = make_tensor(make_smem_ptr(smem), smem_layout);
 
   auto mX = tma_load.get_tma_tensor(shape(gmem_layout));
-  auto gX = local_tile(
-      mX, shape(smem_layout),
-      make_coord(0, 0));  // (CTA_TILE_M,CTA_TILE_N,...REST_M,REST_N,...)
+  // (CTA_TILE_M,CTA_TILE_N,...REST_M,REST_N,...)
+  auto gX = local_tile(mX, shape(smem_layout), make_coord(0, 0));
 
   auto cta_tma_load = tma_load.get_slice(0);
 
@@ -31,6 +29,7 @@ __global__ static void tma_kernel(TensorX tX, GmemLayout gmem_layout,
 
   auto warp_idx = cutlass::canonical_warp_idx_sync();
   auto lane_predicate = cute::elect_one_sync();
+
   if (warp_idx == 0 && lane_predicate) {
     constexpr int k_tma_transaction_bytes = size(sX) * sizeof_bits_v<T> / 8;
 
@@ -47,28 +46,23 @@ __global__ static void tma_kernel(TensorX tX, GmemLayout gmem_layout,
 }
 
 int main() {
-  using namespace cute;
-
   using T = float;
 
   constexpr int m = 4;
   constexpr int n = 4;
 
-  // create data
-  thrust::host_vector<T> cpu_data(m * n);
-  for (int i = 0; i < m * n; ++i) {
-    cpu_data[i] = static_cast<T>(i);
-  }
-  thrust::device_vector<T> gpu_data = cpu_data;
-
+  thrust::host_vector<T> h_data(m * n);
+  for (int i = 0; i < m * n; ++i) h_data[i] = static_cast<T>(i);
+  thrust::device_vector<T> d_data = h_data;
   cudaDeviceSynchronize();
 
   // create tensors
   auto gmem_layout = Layout<Shape<Int<n>, Int<m>>>{};
   auto smem_layout = Layout<Shape<Int<n>, Int<m>>>{};
 
-  auto pX = reinterpret_cast<const T*>(gpu_data.data().get());
-  auto gX = make_tensor(make_gmem_ptr(pX), gmem_layout);
+  auto gX = make_tensor(
+      make_gmem_ptr(reinterpret_cast<const T*>(d_data.data().get())),
+      gmem_layout);
 
   // create the TMA object
   auto tma_load = make_tma_copy(SM90_TMA_LOAD{}, gX, smem_layout);
