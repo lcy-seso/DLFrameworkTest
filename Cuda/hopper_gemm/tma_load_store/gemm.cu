@@ -99,7 +99,7 @@ void hopper_gemm(const T* A, const T* B, T* C) {
   constexpr int smem_size = Traits::smem_size;
   dim3 block{cute::size(TiledMMA{}), 1U, 1U};
   dim3 cluster{1, 1, 1};
-  dim3 grid{utils::ceil_div(kN, kTN), utils::ceil_div(kM, kTM), 1U};
+  dim3 grid{ceil_div(kN, kTN), ceil_div(kM, kTM), 1U};
 
   void const* kernel = reinterpret_cast<void const*>(
       &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
@@ -146,12 +146,12 @@ int main() {
   // initialize data
   thrust::host_vector<DType> h_a(kM * kK);
   for (int i = 0; i < h_a.size(); ++i) {
-    h_a[i] = static_cast<DType>(utils::rand_float());
+    h_a[i] = static_cast<DType>(rand_float());
   }
 
   thrust::host_vector<DType> h_b(kK * kN);
   for (int i = 0; i < h_b.size(); ++i) {
-    h_b[i] = static_cast<DType>(utils::rand_float());
+    h_b[i] = static_cast<DType>(rand_float());
   }
 
   thrust::host_vector<DType> h_c(kM * kN);
