@@ -1,5 +1,7 @@
 #!/bin/bash
 
+EXE="tma_copy_multicast"
+
 build_dir="_build"
 if [ ! -d "$build_dir" ]; then
     mkdir $build_dir
@@ -15,8 +17,8 @@ if [ -d "CMakeFiles" ]; then
     rm -rf CMakeFiles
 fi
 
-if [ -f "tma_copy" ]; then
-    rm -rf tma_copy
+if [ -f "$EXE" ]; then
+    rm -rf $EXE
 fi
 
 cmake -DCMAKE_C_COMPILER=`which gcc` \
@@ -27,9 +29,9 @@ make -j 96 2>&1 | tee ../build.log
 
 # ./_build/hopper_gemm
 
-if [ -f "tma_copy" ]; then
+if [ -f "$EXE" ]; then
     echo "Run the executable"
-    ./tma_copy 2>&1 | tee ../run.log
+    ./$EXE 2>&1 | tee ../run.log
 else
     echo "Build failed"
 fi
