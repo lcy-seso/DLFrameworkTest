@@ -1,6 +1,7 @@
 #include "cuda_utils.cuh"
 #include "tma_copy.cuh"
 
+#include <cutlass/cluster_launch.hpp>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
@@ -47,27 +48,44 @@ int main() {
   // destination tensor on global memory
   auto g_dst = make_tensor(make_gmem_ptr(d_dst_ptr), g_layout);
 
-  auto tma_load = make_tma_copy(SM90_TMA_LOAD{}, g_src, s_layout);
+  // threads block cluster
+  static constexpr int kCopyN = 2;
+  using ClusterShape = Shape<_1, _1, Int<kCopyN>>;
+  ClusterShape cluster_shape;
+  auto tile_shape = make_shape(Int<kTM>{}, Int<kTN>{});
+
+  auto tma_load = make_tma_copy(SM90_TMA_LOAD_MULTICAST{}, g_src, s_layout,
+                                tile_shape, size(cluster_shape));
   auto tma_store = make_tma_copy(SM90_TMA_STORE{}, g_dst, s_layout);
 
   int block_x = CeilDiv<kM, kTM>;
   int block_y = CeilDiv<kN, kTN>;
 
-  dim3 blocks(block_x, block_y, 1);
+  dim3 blocks(block_x, block_y, kCopyN);
   dim3 threads(kThreads, 1, 1);
+  dim3 cluster_dims(size<0>(cluster_shape), size<1>(cluster_shape),
+                    size<2>(cluster_shape));
 
   std::cout << "kSharedMemSize: " << kSharedMemSize << std::endl;
+
+  cutlass::ClusterLaunchParams launch_params{blocks, threads, cluster_dims,
+                                             kSharedMemSize * sizeof(DType)};
 
   static constexpr int kThreadCols = CeilDiv<kThreads, 32>;
   using ThreadLayout =
       Layout<Shape<_32, Int<kThreadCols>>, Stride<Int<kThreadCols>, _1>>;
 
-  auto kernel = &ke_tma_copy<DType, kSharedMemSize,  //
-                             ThreadLayout, GMemLayout, SMemLayout,
-                             decltype(tma_load), decltype(tma_store)>;
+  auto kernel = &ke_tma_copy_multicast<DType, kSharedMemSize,  //
+                                       ThreadLayout, GMemLayout, SMemLayout,
+                                       decltype(tma_load), decltype(tma_store)>;
+  cutlass::Status status = cutlass::launch_kernel_on_cluster(
+      launch_params, kernel, d_src_ptr, d_dst_ptr, g_layout, s_layout, tma_load,
+      tma_store);
 
-  kernel<<<blocks, threads>>>(d_src_ptr, d_dst_ptr, g_layout, s_layout,
-                              tma_load, tma_store);
+  CUTE_CHECK_LAST();
+  if (status != cutlass::Status::kSuccess) {
+    std::cerr << "Kernel launch failed with status: " << std::endl;
+  }
 
   h_dst = d_dst;
 

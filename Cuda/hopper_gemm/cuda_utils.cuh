@@ -1,5 +1,21 @@
 #pragma once
 
+#include <cuda_runtime.h>
+
+#include <iomanip>
+#include <iostream>
+#include <stdexcept>
+
+#define CHECK_CUDA(call)                                                       \
+  do {                                                                         \
+    cudaError_t err = call;                                                    \
+    if (err != cudaSuccess) {                                                  \
+      fprintf(stderr, "CUDA error in %s at line %d: %s\n", __FILE__, __LINE__, \
+              cudaGetErrorString(err));                                        \
+      throw std::runtime_error(cudaGetErrorString(err));                       \
+    }                                                                          \
+  } while (0)
+
 template <int N, int D>
 constexpr int CeilDiv = (N + D - 1) / D;
 
@@ -11,3 +27,45 @@ float rand_float(float a = 1e-3, float b = 1) {
 }
 
 __forceinline__ unsigned int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
+template <typename DType>
+int check_results(const DType* value1, const DType* value2, int kNumel) {
+  // Check if h_src and h_dst are the same
+  bool match = true;
+  for (int i = 0; i < kNumel; ++i) {
+    if (value1[i] != value2[i]) {
+      std::cerr << "Verification failed: Mismatch found at index " << i
+                << ": value1[" << i << "] = " << value1[i] << ", value2[" << i
+                << "] = " << value2[i] << std::endl;
+      match = false;
+      break;  // Stop at the first mismatch
+    }
+  }
+
+  if (match) {
+    std::cout
+        << "Verification successful: h_src and h_dst contain the same values."
+        << std::endl;
+  } else {
+    std::cerr << "Verification failed: h_src and h_dst differ." << std::endl;
+    return 1;
+  }
+
+#if 1
+  int start = 256;
+  int end = start + 64;
+  std::cout << "\nsrc:\n";
+  for (int i = start; i < end; ++i) {
+    std::cout << std::fixed << std::setprecision(3) << value1[i] << ", ";
+    if (i && (i + 1) % 16 == 0) std::cout << "\n";
+  }
+
+  std::cout << "\n\ndst:\n";
+  for (int i = start; i < end; ++i) {
+    std::cout << std::fixed << std::setprecision(3) << value2[i] << ", ";
+    if (i && (i + 1) % 16 == 0) std::cout << "\n";
+  }
+#endif
+
+  return 0;
+}

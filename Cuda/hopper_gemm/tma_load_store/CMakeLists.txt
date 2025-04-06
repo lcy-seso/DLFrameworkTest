@@ -45,3 +45,6 @@ set_target_properties(hopper_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
 
 add_executable(tma_copy tma_copy.cu)
 set_target_properties(tma_copy PROPERTIES CUDA_ARCHITECTURES 90a)
+
+add_executable(tma_copy_multicast tma_copy_multicast.cu)
+set_target_properties(tma_copy_multicast PROPERTIES CUDA_ARCHITECTURES 90a)
