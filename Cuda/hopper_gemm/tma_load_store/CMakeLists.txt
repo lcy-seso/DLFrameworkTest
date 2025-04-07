@@ -40,11 +40,11 @@ set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-gencode arch=compute_90a,code=sm_90a")
 include_directories("${PROJECT_SOURCE_DIR}/../")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
-add_executable(hopper_gemm gemm.cu)
-set_target_properties(hopper_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
+# add_executable(hopper_gemm gemm.cu) set_target_properties(hopper_gemm
+# PROPERTIES CUDA_ARCHITECTURES 90a)
 
-add_executable(tma_copy tma_copy.cu)
-set_target_properties(tma_copy PROPERTIES CUDA_ARCHITECTURES 90a)
+# add_executable(tma_copy tma_copy.cu) set_target_properties(tma_copy PROPERTIES
+# CUDA_ARCHITECTURES 90a)
 
 add_executable(tma_copy_multicast tma_copy_multicast.cu)
 set_target_properties(tma_copy_multicast PROPERTIES CUDA_ARCHITECTURES 90a)

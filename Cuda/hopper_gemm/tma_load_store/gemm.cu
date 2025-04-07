@@ -86,6 +86,7 @@ void hopper_gemm(const T* A, const T* B, T* C) {
   using TiledMMA = typename Traits::TiledMMA;
   Tensor mA = make_tensor(make_gmem_ptr(A), Shape<Int<kM>, Int<kK>>{},
                           Stride<Int<kK>, _1>{});
+
   // Interpret the column-major matrix B with shape [kK, kN] as a row-major
   // matrix B with shape [kN, kK]
   Tensor mB = make_tensor(make_gmem_ptr(B), Shape<Int<kN>, Int<kK>>{},
