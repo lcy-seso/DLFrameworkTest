@@ -32,7 +32,10 @@ struct KernelTraits {
   static constexpr int kTN = kTN_;
   static constexpr int kTK = kTK_;
 
-  // TiledMMA
+  // 16-bit data type for inputs and output, accumulator in 16 bit.
+  // operand A and B are sourced from shared memory.
+  // operand A and B are both memory-contiguous in the K mode, that means
+  // A is row-major and B is column-major.
   using mma_op =
       decltype(SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>{});
   using mma_traits = MMA_Traits<mma_op>;
@@ -140,22 +143,22 @@ int main() {
     std::cout << props.minor << std::endl;
 
   using DType = cutlass::half_t;
-  static constexpr int kM = 8192;
-  static constexpr int kN = 8192;
-  static constexpr int kK = 8192;
+  static constexpr int kM = 1024;
+  static constexpr int kN = 2048;
+  static constexpr int kK = 512;
 
   // initialize data
-  thrust::host_vector<DType> h_a(kM * kK);
+  thrust::host_vector<DType> h_a(kM * kK);  // 1024 * 512
   for (int i = 0; i < h_a.size(); ++i) {
     h_a[i] = static_cast<DType>(rand_float());
   }
 
-  thrust::host_vector<DType> h_b(kK * kN);
+  thrust::host_vector<DType> h_b(kK * kN);  // 512 * 2048
   for (int i = 0; i < h_b.size(); ++i) {
     h_b[i] = static_cast<DType>(rand_float());
   }
 
-  thrust::host_vector<DType> h_c(kM * kN);
+  thrust::host_vector<DType> h_c(kM * kN);  // 1024 * 2048
   thrust::fill(h_c.begin(), h_c.end(), 0.);
 
   thrust::device_vector<DType> d_a = h_a;
