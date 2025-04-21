@@ -38,7 +38,9 @@ list(APPEND CUDA_NVCC_FLAGS ${ARCH_LIST})
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-gencode arch=compute_90a,code=sm_90a")
 
 include_directories("${PROJECT_SOURCE_DIR}/../")
+include_directories("${PROJECT_SOURCE_DIR}/../../")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
 add_executable(hopper_gemm gemm.cu)
 set_target_properties(hopper_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
+target_link_libraries(hopper_gemm cublas)

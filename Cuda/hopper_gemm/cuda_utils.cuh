@@ -26,6 +26,21 @@ float rand_float(float a = 1e-3, float b = 1) {
   return a + r;
 }
 
+float rand_normal(float mean = 0.0f, float stddev = 1.0f) {
+  // Box-Muller transform to generate random numbers with Normal distribution
+  float u1 = ((float)rand()) / (float)RAND_MAX;
+  float u2 = ((float)rand()) / (float)RAND_MAX;
+
+  // Avoid log(0) by ensuring u1 is not zero
+  if (u1 < 1e-10f) u1 = 1e-10f;
+
+  // Compute Gaussian random value
+  float r = std::sqrt(-2.0f * std::log(u1)) * std::cos(2.0f * M_PI * u2);
+
+  // Scale and shift to get desired mean and standard deviation
+  return mean + stddev * r;
+}
+
 __forceinline__ unsigned int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 template <typename DType>

@@ -161,33 +161,55 @@ int main() {
   // initialize data
   thrust::host_vector<DType> h_a(kM * kK);  // 1024 * 512
   for (int i = 0; i < h_a.size(); ++i) {
-    h_a[i] = static_cast<DType>(rand_float());
+    h_a[i] = static_cast<DType>(rand_normal(0.05f, 1e-2f));
   }
 
   thrust::host_vector<DType> h_b(kK * kN);  // 512 * 2048
   for (int i = 0; i < h_b.size(); ++i) {
-    h_b[i] = static_cast<DType>(rand_float());
+    h_b[i] = static_cast<DType>(rand_normal(0.03f, 5e-2f));
   }
 
   thrust::host_vector<DType> h_c(kM * kN);  // 1024 * 2048
   thrust::fill(h_c.begin(), h_c.end(), 0.);
 
+  thrust::host_vector<DType> h_c_ref(kM * kN);  // 1024 * 2048
+  thrust::fill(h_c_ref.begin(), h_c_ref.end(), 0.);
+
   thrust::device_vector<DType> d_a = h_a;
   thrust::device_vector<DType> d_b = h_b;
   thrust::device_vector<DType> d_c = h_c;
-
+  thrust::device_vector<DType> d_c_ref = h_c_ref;
   hopper_gemm<DType, kM, kN, kK>(thrust::raw_pointer_cast(d_a.data()),
                                  thrust::raw_pointer_cast(d_b.data()),
                                  thrust::raw_pointer_cast(d_c.data()));
   h_c = d_c;
   cudaDeviceSynchronize();
 
-#if 0
-// debug print
-  const __half* data =
-      reinterpret_cast<const __half*>(thrust::raw_pointer_cast(h_c.data()));
-  print_matrix(data, kM, kN);
+  // ground truth
+  const __half* A =
+      reinterpret_cast<const __half*>(thrust::raw_pointer_cast(d_a.data()));
+  const __half* B =
+      reinterpret_cast<const __half*>(thrust::raw_pointer_cast(d_b.data()));
+  __half* C =
+      reinterpret_cast<__half*>(thrust::raw_pointer_cast(d_c_ref.data()));
+  cublas_hgemm(kM, kN, kK, A, B, C);
+  h_c_ref = d_c_ref;
+
+  {  // check result
+    const __half* data =
+        reinterpret_cast<const __half*>(thrust::raw_pointer_cast(h_c.data()));
+
+    const __half* data_ref = reinterpret_cast<const __half*>(
+        thrust::raw_pointer_cast(h_c_ref.data()));
+
+#if 1
+    // debug print
+    print_matrix(data, kM, kN, 32);
+    print_matrix(data_ref, kM, kN, 32);
 #endif
+
+    check_result(data, data_ref, kM * kN);
+  }
 
   return 0;
 }
