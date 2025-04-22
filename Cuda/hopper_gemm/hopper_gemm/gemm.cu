@@ -37,27 +37,14 @@ struct KernelTraits {
   // 2. operand A and B are sourced from shared memory.
   // 3. operand A and B are both memory-contiguous in the K mode, that means
   //    A is row-major and B is column-major.
-  using mma_op =
-      decltype(SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>{});
-  using mma_traits = MMA_Traits<mma_op>;
-  using mma_atom = MMA_Atom<mma_traits>;
+  // about the permutation layout (the third parameter of `TiledMMA`) see this
+  // issue: https://github.com/NVIDIA/cutlass/discussions/1345
+  using TiledMMA = decltype(make_tiled_mma(
+      SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>{},  // wgmma
+      Layout<Shape<_1, _1, _1>>{},  // atom layout
+      Tile<_64, _64, _16>{}));      // tiler for the MNK mode
 
-  // thread repetition
-  // (_128,_1,_1,_1):(_1,_0,_0,_0)
-  using AtomLayout = decltype(make_layout(make_shape(_1{}, _1{}, _1{})));
-
-  // about the permutation layout see this issue:
-  // https://github.com/NVIDIA/cutlass/discussions/1345
-  using mma_atom_shape = mma_traits::Shape_MNK;
-  static constexpr int MmaVM = get<0>(mma_atom_shape{});  // 64
-  static constexpr int MmaVN = get<1>(mma_atom_shape{});  // 64
-  static constexpr int MmaVK = get<2>(mma_atom_shape{});  // 16
-  using Tiler = decltype(make_shape(Int<MmaVM>{}, Int<MmaVN>{}, Int<MmaVK>{}));
-
-  using TiledMMA = decltype(make_tiled_mma(mma_atom{},    // wgmma 64x64x16
-                                           AtomLayout{},  // atom layout
-                                           Tiler{}));  // tiler for the MNK mode
-
+  // swizzle function: <3, 4, 3>, shape: ((8, 64), (64, 1))
   using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<T>;
   using SmemLayoutA = decltype(tile_to_shape(
       SmemLayoutAtom{}, make_shape(Int<kTM>{}, Int<kTK>{})));
@@ -75,8 +62,8 @@ struct KernelTraits {
 template <typename T, const int kM, const int kN, const int kK>
 void hopper_gemm(const T* gA, const T* gB, T* gC) {
   // Block shape and cta tiler
-  constexpr int kTM = 256;
-  constexpr int kTN = 128;
+  constexpr int kTM = 64;
+  constexpr int kTN = 64;
   constexpr int kTK = 64;
 
   using Traits = KernelTraits<T, kM, kN, kK, kTM, kTN, kTK>;
@@ -85,15 +72,16 @@ void hopper_gemm(const T* gA, const T* gB, T* gC) {
   using SmemLayoutB = typename Traits::SmemLayoutB;
 
   using TiledMMA = typename Traits::TiledMMA;
+  // print_latex(TiledMMA{});
 
 #if 0
   std::cout << "TiledMMA" << std::endl;
   print(TiledMMA{});
   std::cout << std::endl;
 
-  using Tiler = typename Traits::Tiler;
-  std::cout << "Tiler" << std::endl;
-  print(Tiler{});
+  using SmemLayoutAtom = typename Traits::SmemLayoutAtom;
+  std::cout << std::endl << "SmemLayoutAtom" << std::endl;
+  print(SmemLayoutAtom{});
   std::cout << std::endl;
 #endif
 
@@ -154,25 +142,27 @@ int main() {
   }
 
   using DType = cutlass::half_t;
-  static constexpr int kM = 1024;
-  static constexpr int kN = 2048;
-  static constexpr int kK = 512;
+  static constexpr int kM = 64;
+  static constexpr int kN = 64;
+  static constexpr int kK = 64;
 
   // initialize data
-  thrust::host_vector<DType> h_a(kM * kK);  // 1024 * 512
+  thrust::host_vector<DType> h_a(kM * kK);  // 64 * 16
   for (int i = 0; i < h_a.size(); ++i) {
     h_a[i] = static_cast<DType>(rand_normal(0.05f, 1e-2f));
+    // h_a[i] = static_cast<DType>(i % 2048);
   }
 
-  thrust::host_vector<DType> h_b(kK * kN);  // 512 * 2048
+  thrust::host_vector<DType> h_b(kK * kN);  // 16 * 64
   for (int i = 0; i < h_b.size(); ++i) {
     h_b[i] = static_cast<DType>(rand_normal(0.03f, 5e-2f));
+    // h_b[i] = static_cast<DType>(i % 2048);
   }
 
-  thrust::host_vector<DType> h_c(kM * kN);  // 1024 * 2048
+  thrust::host_vector<DType> h_c(kM * kN);  // 64 * 64
   thrust::fill(h_c.begin(), h_c.end(), 0.);
 
-  thrust::host_vector<DType> h_c_ref(kM * kN);  // 1024 * 2048
+  thrust::host_vector<DType> h_c_ref(kM * kN);  // 64 * 64
   thrust::fill(h_c_ref.begin(), h_c_ref.end(), 0.);
 
   thrust::device_vector<DType> d_a = h_a;
@@ -206,9 +196,9 @@ int main() {
     // debug print
     print_matrix(data, kM, kN, 32);
     print_matrix(data_ref, kM, kN, 32);
-#endif
 
     check_result(data, data_ref, kM * kN);
+#endif
   }
 
   return 0;
