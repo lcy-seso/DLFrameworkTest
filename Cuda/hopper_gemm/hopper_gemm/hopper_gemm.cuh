@@ -29,6 +29,7 @@ __global__ void ke_cute_hopper_gemm(
 
   auto cta_tiler = make_shape(Int<kTM>{}, Int<kTN>{}, Int<kTK>{});
   auto cta_coord = make_coord(blockIdx.y, blockIdx.x, _);
+
   Tensor gA = local_tile(mA, cta_tiler, cta_coord, Step<_1, X, _1>{});
   Tensor gB = local_tile(mB, cta_tiler, cta_coord, Step<X, _1, _1>{});
   Tensor gC = local_tile(mC, cta_tiler, cta_coord, Step<_1, _1, X>{});
