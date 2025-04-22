@@ -43,18 +43,22 @@ __global__ void ke_cute_hopper_gemm(
   Tensor sB =
       make_tensor(make_smem_ptr(shared_storage.smem_B.data()), SmemLayoutB{});
 
-  auto [tAgA, tAsA] =
-      tma_partition(tma_load_A, Int<0>{}, Layout<_1>{}, group_modes<0, 2>(sA),
-                    group_modes<0, 2>(gA));
-  auto [tBgB, tBsB] =
-      tma_partition(tma_load_B, Int<0>{}, Layout<_1>{}, group_modes<0, 2>(sB),
-                    group_modes<0, 2>(gB));
+  auto [tAgA, tAsA] = tma_partition(tma_load_A, Int<0>{},   //
+                                    Layout<_1>{},           //
+                                    group_modes<0, 2>(sA),  //
+                                    group_modes<0, 2>(gA));
+  auto [tBgB, tBsB] = tma_partition(tma_load_B, Int<0>{},   //
+                                    Layout<_1>{},           //
+                                    group_modes<0, 2>(sB),  //
+                                    group_modes<0, 2>(gB));
 
-  typename KernelTraits::TiledMMA tiled_mma;
+  typename KernelTraits::TiledMma tiled_mma;
   ThrMMA thr_mma = tiled_mma.get_thread_slice(threadIdx.x);
+
   Tensor tCsA = thr_mma.partition_A(sA);
   Tensor tCsB = thr_mma.partition_B(sB);
   Tensor tCgC = thr_mma.partition_C(gC);
+
   Tensor tCrC = thr_mma.make_fragment_C(tCgC);
   clear(tCrC);
 
@@ -93,12 +97,12 @@ __global__ void ke_cute_hopper_gemm(
     }
     TransactionBarrier::wait(&smem_A_barrier, k_tile % 2);
     TransactionBarrier::wait(&smem_B_barrier, k_tile % 2);
-    cute::warpgroup_arrive();
+    warpgroup_arrive();
 
     gemm(tiled_mma, tCrC, tCrA, tCrB, tCrC);
 
-    cute::warpgroup_commit_batch();
-    cute::warpgroup_wait<0>();
+    warpgroup_commit_batch();
+    warpgroup_wait<0>();
   }
 
   T alpha = static_cast<T>(1.0);

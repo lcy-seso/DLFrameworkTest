@@ -41,6 +41,8 @@ include_directories("${PROJECT_SOURCE_DIR}/../")
 include_directories("${PROJECT_SOURCE_DIR}/../../")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
-add_executable(hopper_gemm gemm.cu)
-set_target_properties(hopper_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
-target_link_libraries(hopper_gemm cublas)
+add_executable(tma_wgmma tma_wgmma.cu)
+set_target_properties(tma_wgmma PROPERTIES CUDA_ARCHITECTURES 90a)
+target_link_libraries(tma_wgmma cublas)
+
+# add_executable(prin_layout prin_layout.cu)
