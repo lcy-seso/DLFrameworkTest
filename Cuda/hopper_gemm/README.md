@@ -1,3 +1,0 @@
-- [x] TMA load store
-- [ ] TAM + WGMMA
-- [ ] TMA + WGMMA + WS
