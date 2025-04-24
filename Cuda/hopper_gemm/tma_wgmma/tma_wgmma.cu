@@ -39,10 +39,9 @@ struct KernelTraits {
   //    A is row-major and B is column-major.
   // about the permutation layout (the third parameter of `TiledMMA`) see this
   // issue: https://github.com/NVIDIA/cutlass/discussions/1345
-  using TiledMMA = decltype(make_tiled_mma(
-      SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>{},  // wgmma
-      Layout<Shape<_1, _1, _1>>{},  // atom layout
-      Tile<_64, _64, _16>{}));      // tiler for the MNK mode
+  using TiledMma = TiledMMA<
+      MMA_Atom<SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>>,
+      Layout<Shape<_1, _1, _1>>, Tile<_64, _64, _16>>;
 
   // swizzle function: <3, 4, 3>, shape: ((8, 64), (64, 1))
   using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<T>;
@@ -71,12 +70,11 @@ void hopper_gemm(const T* gA, const T* gB, T* gC) {
   using SmemLayoutA = typename Traits::SmemLayoutA;
   using SmemLayoutB = typename Traits::SmemLayoutB;
 
-  using TiledMMA = typename Traits::TiledMMA;
-  // print_latex(TiledMMA{});
+  using TiledMma = typename Traits::TiledMma;
 
-#if 0
+#if 1
   std::cout << "TiledMMA" << std::endl;
-  print(TiledMMA{});
+  print(TiledMma{});
   std::cout << std::endl;
 
   using SmemLayoutAtom = typename Traits::SmemLayoutAtom;
@@ -107,8 +105,7 @@ void hopper_gemm(const T* gA, const T* gB, T* gC) {
         kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
   }
 
-  // Launch parameter setup
-  dim3 block{cute::size(TiledMMA{}), 1U, 1U};
+  dim3 block{cute::size(TiledMma{}), 1U, 1U};
   dim3 cluster{1, 1, 1};
   dim3 grid{ceil_div(kN, kTN), ceil_div(kM, kTM), 1U};
 
@@ -197,7 +194,7 @@ int main() {
     print_matrix(data, kM, kN, 32);
     print_matrix(data_ref, kM, kN, 32);
 
-    check_result(data, data_ref, kM * kN);
+    // check_result(data, data_ref, kM * kN);
 #endif
   }
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-cd build
-
-if [ -f "hopper_gemm" ]; then
-    rm hopper_gemm
+if [ ! -d "build" ]; then
+    mkdir build
 fi
+
+cd build
 
 if [ -f "CMakeCache.txt" ]; then
     rm CMakeCache.txt
@@ -14,14 +14,19 @@ if [ -d "CMakeFiles" ]; then
     rm -rf CMakeFiles
 fi
 
+if [ -f "wgmma" ]; then
+    rm wgmma
+fi
+
 cmake ..
 
 make 2>&1 | tee ../build.log
 
-if [ -f "hopper_gemm" ]; then
+if [ -f "wgmma" ]; then
     echo "build success"
-    ./hopper_gemm 2>&1 | tee ../run.log
+    ./wgmma 2>&1 | tee ../run.log
 else
     echo "build failed"
 fi
+
 cd ..
