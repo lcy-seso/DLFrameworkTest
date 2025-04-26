@@ -6,13 +6,13 @@
 
 using namespace cute;
 
-template <typename DType, typename KeTraits, typename TiledCopyA,
-          typename TiledCopyB>
+template <typename DType, typename KeTraits, typename TmaLoadA,
+          typename TmaLoadB>
 __global__ void ke_cute_tma_wgmma(CUTE_GRID_CONSTANT TmaLoadA const tma_load_A,
                                   CUTE_GRID_CONSTANT TmaLoadB const tma_load_B,
                                   DType* gC_ptr) {
-  using SmemLayoutA = typename KernelTraits::SmemLayoutA;
-  using SmemLayoutB = typename KernelTraits::SmemLayoutB;
+  using SmemLayoutA = typename KeTraits::SmemLayoutA;
+  using SmemLayoutB = typename KeTraits::SmemLayoutB;
 
   constexpr int kM = KeTraits::kM;
   constexpr int kN = KeTraits::kN;
@@ -34,7 +34,7 @@ __global__ void ke_cute_tma_wgmma(CUTE_GRID_CONSTANT TmaLoadA const tma_load_A,
   Tensor gB = local_tile(mB, cta_tiler, cta_coord, Step<X, _1, _1>{});
   Tensor gC = local_tile(mC, cta_tiler, cta_coord, Step<_1, _1, X>{});
 
-  using SharedStorage = typename KernelTraits::SharedStorage;
+  using SharedStorage = typename KeTraits::SharedStorage;
   extern __shared__ char smem_[];
   SharedStorage& shared_storage = *reinterpret_cast<SharedStorage*>(smem_);
 

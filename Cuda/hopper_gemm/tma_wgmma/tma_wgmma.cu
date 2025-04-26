@@ -96,8 +96,8 @@ void hopper_gemm(const T* gA, const T* gB, T* gC) {
   auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
 
   void const* kernel = reinterpret_cast<void const*>(
-      &ke_cute_hopper_gemm<T, Traits, decltype(tma_load_A),
-                           decltype(tma_load_B)>);
+      &ke_cute_tma_wgmma<T, Traits, decltype(tma_load_A),
+                         decltype(tma_load_B)>);
 
   constexpr int smem_size = Traits::smem_size;
   if (smem_size >= 48 * 1024) {
@@ -189,12 +189,12 @@ int main() {
     const __half* data_ref = reinterpret_cast<const __half*>(
         thrust::raw_pointer_cast(h_c_ref.data()));
 
-#if 1
+#if 0
     // debug print
     print_matrix(data, kM, kN, 32);
     print_matrix(data_ref, kM, kN, 32);
 
-    // check_result(data, data_ref, kM * kN);
+    check_result(data, data_ref, kM * kN);
 #endif
   }
 
