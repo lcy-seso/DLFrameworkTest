@@ -8,7 +8,7 @@
 void print_matrix(const __half* data, const int kM, const int kN,
                   int cutoff = -1) {
   std::cout << std::endl << "Matrix: [" << kM << ", " << kN << "]" << std::endl;
-  std::cout << std::fixed << std::setprecision(2);
+  std::cout << std::fixed << std::setprecision(4);
 
   if (cutoff == -1) {
     cutoff = kM * kN;

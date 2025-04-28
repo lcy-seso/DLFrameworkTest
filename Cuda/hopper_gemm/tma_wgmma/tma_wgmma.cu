@@ -10,11 +10,11 @@
 
 using namespace cute;
 
-template <typename T, typename SmemLayoutA, typename SmemLayoutB>
+template <typename DType, typename SmemLayoutA, typename SmemLayoutB>
 struct SharedStorage {
   // data storage
-  array_aligned<T, cosize_v<SmemLayoutA>, 128> smem_A;
-  array_aligned<T, cosize_v<SmemLayoutB>, 128> smem_B;
+  array_aligned<DType, cosize_v<SmemLayoutA>, 128> smem_A;
+  array_aligned<DType, cosize_v<SmemLayoutB>, 128> smem_B;
 
   // barrier
   uint64_t smem_A_barrier;
@@ -22,9 +22,9 @@ struct SharedStorage {
 };
 
 // kernel traits
-template <typename T, const int kM_, const int kN_, const int kK_,
+template <typename DType, const int kM_, const int kN_, const int kK_,
           const int kTM_, const int kTN_, const int kTK_>
-struct KernelTraits {
+struct KeTraits {
   static constexpr int kM = kM_;
   static constexpr int kN = kN_;
   static constexpr int kK = kK_;
@@ -32,6 +32,13 @@ struct KernelTraits {
   static constexpr int kTM = kTM_;
   static constexpr int kTN = kTN_;
   static constexpr int kTK = kTK_;
+
+  // A is laid out as a row-major tensor
+  using LayoutGmemA = Layout<Shape<Int<kM>, Int<kK>>, Stride<Int<kK>, _1>>;
+  // interpret B as a row-major tensor
+  using LayoutGmemB = Layout<Shape<Int<kN>, Int<kK>>, Stride<Int<kK>, _1>>;
+  // C is laid out as a row-major tensor
+  using LayoutGmemC = Layout<Shape<Int<kM>, Int<kN>>, Stride<Int<kN>, _1>>;
 
   // 1. 16-bit data type for inputs and output, accumulator in 16 bit.
   // 2. operand A and B are sourced from shared memory.
@@ -41,10 +48,11 @@ struct KernelTraits {
   // issue: https://github.com/NVIDIA/cutlass/discussions/1345
   using TiledMma = TiledMMA<
       MMA_Atom<SM90_64x64x16_F16F16F16_SS<GMMA::Major::K, GMMA::Major::K>>,
-      Layout<Shape<_1, _1, _1>>, Tile<_64, _64, _16>>;
+      Layout<Shape<_1, _1, _1>>,  // use a single warp group
+      Tile<_64, _64, _16>>;
 
   // swizzle function: <3, 4, 3>, shape: ((8, 64), (64, 1))
-  using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<T>;
+  using SmemLayoutAtom = GMMA::Layout_K_SW128_Atom<DType>;
   using SmemLayoutA = decltype(tile_to_shape(
       SmemLayoutAtom{}, make_shape(Int<kTM>{}, Int<kTK>{})));
 
@@ -52,27 +60,27 @@ struct KernelTraits {
       SmemLayoutAtom{}, make_shape(Int<kTN>{}, Int<kTK>{})));
 
   // SharedStorage
-  using SharedStorage = SharedStorage<T, SmemLayoutA, SmemLayoutB>;
+  using SharedStorage = SharedStorage<DType, SmemLayoutA, SmemLayoutB>;
 
   // smem_size
-  static constexpr int smem_size = sizeof(SharedStorage);
+  static constexpr int kShmSize = sizeof(SharedStorage);
 };
 
-template <typename T, const int kM, const int kN, const int kK>
-void hopper_gemm(const T* gA, const T* gB, T* gC) {
+template <typename DType, const int kM, const int kN, const int kK>
+void hopper_gemm(const DType* gA_ptr, const DType* gB_ptr, DType* gC_ptr) {
   // Block shape and cta tiler
   constexpr int kTM = 64;
   constexpr int kTN = 64;
   constexpr int kTK = 64;
 
-  using Traits = KernelTraits<T, kM, kN, kK, kTM, kTN, kTK>;
+  using Traits = KeTraits<DType, kM, kN, kK, kTM, kTN, kTK>;
 
   using SmemLayoutA = typename Traits::SmemLayoutA;
   using SmemLayoutB = typename Traits::SmemLayoutB;
 
   using TiledMma = typename Traits::TiledMma;
 
-#if 1
+#if 0
   std::cout << "TiledMMA" << std::endl;
   print(TiledMma{});
   std::cout << std::endl;
@@ -83,35 +91,32 @@ void hopper_gemm(const T* gA, const T* gB, T* gC) {
   std::cout << std::endl;
 #endif
 
-  using LayoutA = Layout<Shape<Int<kM>, Int<kK>>, Stride<Int<kK>, _1>>;
-  Tensor mA = make_tensor(make_gmem_ptr(gA), LayoutA{});
-
-  // Interpret the column-major matrix B with shape [kK, kN] as a row-major
-  // matrix B with shape [kN, kK]
-  using LayoutB = Layout<Shape<Int<kN>, Int<kK>>, Stride<Int<kK>, _1>>;
-  Tensor mB = make_tensor(make_gmem_ptr(gB), LayoutB{});
+  Tensor gA =
+      make_tensor(make_gmem_ptr(gA_ptr), typename Traits::LayoutGmemA{});
+  Tensor gB =
+      make_tensor(make_gmem_ptr(gB_ptr), typename Traits::LayoutGmemB{});
 
   // create tma_load
-  auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{});
-  auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{});
+  auto tma_load_A = make_tma_copy(SM90_TMA_LOAD{}, gA, SmemLayoutA{});
+  auto tma_load_B = make_tma_copy(SM90_TMA_LOAD{}, gB, SmemLayoutB{});
 
   void const* kernel = reinterpret_cast<void const*>(
-      &ke_cute_tma_wgmma<T, Traits, decltype(tma_load_A),
+      &ke_cute_tma_wgmma<DType, Traits, decltype(tma_load_A),
                          decltype(tma_load_B)>);
 
-  constexpr int smem_size = Traits::smem_size;
-  if (smem_size >= 48 * 1024) {
+  constexpr int kShmSize = Traits::kShmSize;
+  if (kShmSize >= 48 * 1024) {
     CUTE_CHECK_ERROR(cudaFuncSetAttribute(
-        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kShmSize));
   }
 
+  dim3 grid{ceil_div(kN, kTN), ceil_div(kM, kTM), 1U};
   dim3 block{cute::size(TiledMma{}), 1U, 1U};
   dim3 cluster{1, 1, 1};
-  dim3 grid{ceil_div(kN, kTN), ceil_div(kM, kTM), 1U};
 
-  cutlass::ClusterLaunchParams launch_params{grid, block, cluster, smem_size};
+  cutlass::ClusterLaunchParams launch_params{grid, block, cluster, kShmSize};
   cutlass::Status status = cutlass::launch_kernel_on_cluster(
-      launch_params, kernel, tma_load_A, tma_load_B, gC);
+      launch_params, kernel, tma_load_A, tma_load_B, gC_ptr);
   CUTE_CHECK_LAST();
 
   if (status != cutlass::Status::kSuccess) {
@@ -139,9 +144,9 @@ int main() {
   }
 
   using DType = cutlass::half_t;
-  static constexpr int kM = 64;
-  static constexpr int kN = 64;
-  static constexpr int kK = 64;
+  static constexpr int kM = 1024;
+  static constexpr int kN = 1024;
+  static constexpr int kK = 1024;
 
   // initialize data
   thrust::host_vector<DType> h_a(kM * kK);  // 64 * 16
@@ -189,10 +194,10 @@ int main() {
     const __half* data_ref = reinterpret_cast<const __half*>(
         thrust::raw_pointer_cast(h_c_ref.data()));
 
-#if 0
+#if 1
     // debug print
-    print_matrix(data, kM, kN, 32);
-    print_matrix(data_ref, kM, kN, 32);
+    print_matrix(data, kM, kN, 64);
+    print_matrix(data_ref, kM, kN, 64);
 
     check_result(data, data_ref, kM * kN);
 #endif
