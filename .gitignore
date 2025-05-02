@@ -4,3 +4,4 @@ tensorflow_env
 .vscode
 _build/
 build/
+.DS_Store
