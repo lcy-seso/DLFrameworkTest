@@ -28,10 +28,10 @@ set(CMAKE_CXX_LINK_EXECUTABLE
     "${CMAKE_CXX_LINK_EXECUTABLE} -lpthread -ldl -lrt")
 
 include_directories(${CUDA_INCLUDE_DIRS})
-include_directories(
-  "../../build/third_party/cutlass/src/extern_cutlass/include")
-include_directories(
-  "../../build/third_party/cutlass/src/extern_cutlass/tools/util/include")
+include_directories("../../third_party/cutlass/include")
+include_directories("../../third_party/cutlass/tools/util/include")
 include_directories("../../")
 cuda_add_executable(swizzle swizzle.cu)
 target_link_libraries(swizzle ${CUDA_LIBRARIES})
+
+cuda_add_executable(swizzle_mode swizzle_mode.cu)

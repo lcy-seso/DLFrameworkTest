@@ -1,6 +1,7 @@
-#include <bitset>
 #include <cute/algorithm/copy.hpp>
 #include <cute/tensor.hpp>
+
+#include <bitset>
 #include <iomanip>
 
 using namespace cute;
