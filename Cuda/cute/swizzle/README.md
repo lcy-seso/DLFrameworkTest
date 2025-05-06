@@ -25,6 +25,11 @@ swizzle<2, 3, 3>的计算过程如下：
 
     <font color="blue">$\text{yyy\_mask}$和$\text{zzz\_mask}$决定了swizzle二维空间中要去交换的两个位置。</font>
 
+1. **permute输入**：`offset ^ shiftr(offset & yyy_msk, shift)`
+
+   1. offset的二进制表示与`yyy_mask`相与，右移`Shifts`位，结果记作offset1；<font color="blue">offset1是将offset中$\text{yyy\_mask}$对应位置的bit位保留原值，其余位置清零，然后取出来的部分移动到$\text{zzz\_mask}$所在的位置。</font>
+   2. offset与offset1进行异或。<font color="blue">一个bit位与0异或结果不变，结果相当于offset中$\text{yyy\_mask}$对应的bit位offset中$\text{zzz\_mask}$对应的bit位进行异或，写入$\text{zzz\_mask}$对应的位置</font>
+
 <p align="center">
 <img src="figures/swizzle_func.png" width=30%><br>
 Fig. swizzle函数位运算示意
@@ -34,11 +39,6 @@ Fig. swizzle函数位运算示意
 <img src="figures/swizzled_offset.png" width=50%><br>
 Fig. 原始的offset和swizzled offset之间的关系
 </p>
-
-1. **permute输入**：`offset ^ shiftr(offset & self.yyy_msk, self.shift)`
-
-   1. offset的二进制表示与`yyy_mask`相与，右移`Shifts`位，结果记作offset1；<font color="blue">offset1是将offset中$\text{yyy\_mask}$对应位置的bit位保留原值，其余位置清零，然后取出来的部分移动到$\text{zzz\_mask}$所在的位置。</font>
-   2. offset与offset1进行异或。<font color="blue">一个bit位与0异或结果不变，结果相当于offset中$\text{yyy\_mask}$对应的bit位offset中$\text{zzz\_mask}$对应的bit位进行异或，写入$\text{zzz\_mask}$对应的位置</font>
 
 ## 对16x16数据块进行swizzle
 
