@@ -1,21 +1,17 @@
 #pragma once
 
 #include <cuda.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_fp8.h>
 #include <cuda_runtime.h>
 #include <cute/arch/cluster_sm90.hpp>
 #include <cute/arch/copy_sm90_tma.hpp>
+#include <cute/tensor.hpp>
 
-__host__ __device__ __forceinline__ void prefetch_tma_descriptor(
-    const void* desc_ptr) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
-  uint64_t gmem_int_desc = reinterpret_cast<uint64_t>(desc_ptr);
-  // Prefetch TMA Descriptor using generic addressing
-  asm volatile("prefetch.tensormap [%0];" : : "l"(gmem_int_desc) : "memory");
-#else
-  // For host code or older architectures, this is a no-op
-  (void)desc_ptr;
-#endif
-}
+typedef __nv_bfloat16 __bfloat16;
+typedef __nv_fp8_e4m3 __fp8_e4m3;
+typedef __nv_fp8_e5m2 __fp8_e5m2;
 
 // Error checking macro for CUDA driver API
 #define CHECK_CU(call)                                                \
@@ -30,139 +26,144 @@ __host__ __device__ __forceinline__ void prefetch_tma_descriptor(
     }                                                                 \
   } while (0)
 
-// TMA descriptor creation API
+// Helper template to map C++ types to CUDA tensor map data types
+template <typename T>
+struct TMADataTypeTraits;
+
+template <>
+struct TMADataTypeTraits<uint8_t> {  // 1 byte
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT8;
+};
+
+template <>
+struct TMADataTypeTraits<uint16_t> {  // 2 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT16;
+};
+
+template <>
+struct TMADataTypeTraits<int> {  // 4 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_INT32;
+};
+
+template <>
+struct TMADataTypeTraits<uint32_t> {
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT32;
+};
+
+template <>
+struct TMADataTypeTraits<int64_t> {  // 8 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_INT64;
+};
+
+template <>
+struct TMADataTypeTraits<uint64_t> {
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT64;
+};
+
+template <>
+struct TMADataTypeTraits<__fp8_e4m3> {  // 1 byte
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT8;
+};
+
+template <>
+struct TMADataTypeTraits<__fp8_e5m2> {  // 1 byte
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_UINT8;
+};
+
+template <>
+struct TMADataTypeTraits<__half> {
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
+};
+
+template <>
+struct TMADataTypeTraits<__bfloat16> {  // 2 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_BFLOAT16;
+};
+
+template <>
+struct TMADataTypeTraits<float> {  // 4 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_FLOAT32;
+};
+
+template <>
+struct TMADataTypeTraits<double> {  // 8 bytes
+  static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_FLOAT64;
+};
+
+template <typename DType>
 class TMADescriptor {
-private:
-  CUtensorMap tensorMap;
-  bool isInitialized;
-
 public:
-  TMADescriptor() : isInitialized(false) {}
-
+  TMADescriptor() : is_initialized(false) {}
   ~TMADescriptor() = default;
 
-  // Create 2D TMA Load descriptor for row-major layout
-  void createTMALoad2D(
-      void* globalAddress,       // Global memory pointer
-      CUdeviceptr baseAddress,   // Base address for bounds checking
-      uint64_t globalDim[2],     // Global tensor dimensions [height, width]
-      uint64_t globalStride[2],  // Global tensor strides [height_stride,
-                                 // width_stride]
-      uint32_t boxDim[2],  // Tile dimensions to load [tile_height, tile_width]
-      uint32_t elementStride[2],  // Element strides [1, 1] for contiguous
-      CUtensorMapInterleave interleave = CU_TENSOR_MAP_INTERLEAVE_NONE,
-      CUtensorMapSwizzle swizzle = CU_TENSOR_MAP_SWIZZLE_NONE,
-      CUtensorMapL2promotion l2Promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B,
-      CUtensorMapFloatOOBfill oobFill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) {
-    // Initialize CUDA driver API if not already done
-    static bool driverInit = false;
-    if (!driverInit) {
+  void create_tma_2d_desc(
+      void* global_address,
+      uint64_t global_dim[2],  // 2 stands for rank
+      uint32_t shared_dim[2], uint64_t global_stride,
+      CUtensorMapSwizzle swizzle = CU_TENSOR_MAP_SWIZZLE_NONE) {
+    if (!is_driver_initialized) {
       CHECK_CU(cuInit(0));
-      driverInit = true;
+      is_driver_initialized = true;
     }
-
-    // Data type: assuming float (32-bit)
-    CUtensorMapDataType dataType = CU_TENSOR_MAP_DATA_TYPE_FLOAT32;
+    static constexpr uint32_t rank = 2;
+    uint64_t global_stride_[rank - 1] = {global_stride};
+    uint32_t element_stride[rank] = {1, 1};
 
     CHECK_CU(cuTensorMapEncodeTiled(
-        &tensorMap,     // Output tensor map
-        dataType,       // Data type
-        2,              // Tensor rank (2D)
-        globalAddress,  // Global address
-        globalDim,      // Global dimensions
-        globalStride,   // Global strides (in elements)
-        boxDim,         // Box dimensions
-        elementStride,  // Element strides
-        interleave,     // Interleave layout
-        swizzle,        // Swizzle mode
-        l2Promotion,    // L2 promotion
-        oobFill         // Out-of-bounds fill
+        &tensor_map,                         // Output tensor map
+        data_type,                           // Data type
+        rank,                                // Tensor rank (2D)
+        global_address,                      // Global address
+        global_dim,                          // Global dimensions
+        global_stride_,                      // Global strides (in elements)
+        shared_dim,                          // Box dimensions
+        element_stride,                      // Element strides
+        CU_TENSOR_MAP_INTERLEAVE_NONE,       // Interleave layout
+        swizzle,                             // Swizzle mode
+        CU_TENSOR_MAP_L2_PROMOTION_L2_256B,  // L2 promotion
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE    // Out-of-bounds fill
         ));
 
-    isInitialized = true;
+    is_initialized = true;
   }
 
-  // Create 2D TMA Store descriptor
-  void createTMAStore2D(
-      void* globalAddress, CUdeviceptr baseAddress, uint64_t globalDim[2],
-      uint64_t globalStride[2], uint32_t boxDim[2], uint32_t elementStride[2],
-      CUtensorMapInterleave interleave = CU_TENSOR_MAP_INTERLEAVE_NONE,
-      CUtensorMapSwizzle swizzle = CU_TENSOR_MAP_SWIZZLE_NONE,
-      CUtensorMapL2promotion l2Promotion = CU_TENSOR_MAP_L2_PROMOTION_L2_128B,
-      CUtensorMapFloatOOBfill oobFill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) {
-    createTMALoad2D(globalAddress, baseAddress, globalDim, globalStride, boxDim,
-                    elementStride, interleave, swizzle, l2Promotion, oobFill);
-  }
-
-  // Get the raw tensor map pointer for use in kernels
-  const CUtensorMap* getTensorMap() const {
-    if (!isInitialized) {
+  const CUtensorMap& get_tma_desc() const {
+    if (!is_initialized) {
       throw std::runtime_error("TMA descriptor not initialized");
     }
-    return &tensorMap;
+    return tensor_map;
   }
 
-  // Helper function to print tensor map info
-  void printInfo() const {
-    if (!isInitialized) {
+  void print_tma_desc_info() const {
+    if (!is_initialized) {
       std::cout << "TMA Descriptor not initialized" << std::endl;
       return;
     }
 
     std::cout << "TMA Descriptor Info:" << std::endl;
-    std::cout << "Address: " << std::hex << &tensorMap << std::dec << std::endl;
+    std::cout << "Address: " << std::hex << &tensor_map << std::dec
+              << std::endl;
   }
+
+private:
+  CUtensorMap tensor_map;
+  bool is_initialized;
+  bool is_driver_initialized;
+
+  static constexpr CUtensorMapDataType data_type =
+      TMADataTypeTraits<DType>::value;
 };
 
-// Convenience functions for common use cases
-
-// Create TMA Load descriptor for row-major 2D tensor
-inline TMADescriptor createTMALoad2DRowMajor(
-    float* globalPtr,  // Global memory pointer
-    int height,        // Tensor height
-    int width,         // Tensor width
-    int tileHeight,    // Tile height to load
-    int tileWidth      // Tile width to load
-) {
-  TMADescriptor desc;
-
-  uint64_t globalDim[2] = {static_cast<uint64_t>(height),
-                           static_cast<uint64_t>(width)};
-  uint64_t globalStride[2] = {static_cast<uint64_t>(width),
-                              1};  // Row-major: [width, 1]
-  uint32_t boxDim[2] = {static_cast<uint32_t>(tileHeight),
-                        static_cast<uint32_t>(tileWidth)};
-  uint32_t elementStride[2] = {1, 1};  // Contiguous access
-
-  desc.createTMALoad2D(
-      globalPtr,                                 // Global address
-      reinterpret_cast<CUdeviceptr>(globalPtr),  // Base address
-      globalDim,                                 // Global dimensions
-      globalStride,                              // Global strides
-      boxDim,                                    // Box dimensions
-      elementStride                              // Element strides
-  );
-
-  return desc;
-}
-
-// Create TMA Store descriptor for row-major 2D tensor
-inline TMADescriptor createTMAStore2DRowMajor(float* globalPtr, int height,
-                                              int width, int tileHeight,
-                                              int tileWidth) {
-  TMADescriptor desc;
-
-  uint64_t globalDim[2] = {static_cast<uint64_t>(height),
-                           static_cast<uint64_t>(width)};
-  uint64_t globalStride[2] = {static_cast<uint64_t>(width), 1};
-  uint32_t boxDim[2] = {static_cast<uint32_t>(tileHeight),
-                        static_cast<uint32_t>(tileWidth)};
-  uint32_t elementStride[2] = {1, 1};
-
-  desc.createTMAStore2D(globalPtr, reinterpret_cast<CUdeviceptr>(globalPtr),
-                        globalDim, globalStride, boxDim, elementStride);
-
-  return desc;
+__host__ __device__ __forceinline__ void prefetch_tma_descriptor(
+    const void* desc_ptr) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  uint64_t gmem_int_desc = reinterpret_cast<uint64_t>(desc_ptr);
+  // Prefetch TMA Descriptor using generic addressing
+  asm volatile("prefetch.tensormap [%0];" : : "l"(gmem_int_desc) : "memory");
+#else
+  // For host code or older architectures, this is a no-op
+  (void)desc_ptr;
+#endif
 }
 
 // Barrier management functions
