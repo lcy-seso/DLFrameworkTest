@@ -222,6 +222,32 @@ __device__ __forceinline__ void tma_store_wait_group(uint32_t n) {
   asm volatile("cp.async.bulk.wait_group 0;" ::: "memory");
 }
 
+__device__ __forceinline__ void tma_store_fence() {
+  asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+}
+
+__device__ __forceinline__ void tma_store(void const* desc_ptr, void* smem_ptr,
+                                          int32_t const& crd_0,
+                                          int32_t const& crd_1) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  uint64_t tma_ptr = reinterpret_cast<uint64_t>(desc_ptr);
+  uint32_t smem_int_ptr =
+      static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
+  asm volatile(
+      "cp.async.bulk.tensor.2d.global.shared::cta.bulk_group [%0, {%2, %3}], "
+      "[%1];"
+      :
+      : "l"(tma_ptr), "r"(smem_int_ptr), "r"(crd_0), "r"(crd_1)
+      : "memory");
+#else
+  // For host code or older architectures, this is a no-op
+  (void)desc_ptr;
+  (void)smem_ptr;
+  (void)crd_0;
+  (void)crd_1;
+#endif
+}
+
 __device__ __forceinline__ void tma_copy(void const* desc_ptr,
                                          uint64_t* barrier_ptr, void* smem_ptr,
                                          int32_t const& crd_0,
