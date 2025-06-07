@@ -1,5 +1,5 @@
 #include "cuda_utils.cuh"
-#include "tma.cuh"
+#include "tma_utils.cuh"
 
 #include <cuda.h>
 
@@ -38,26 +38,29 @@ __global__ void tma_copy_kernel(
 
     // 2. Arrive and expect transaction size (tile_size * sizeof(DType))
     uint32_t expected_bytes = kTileM * kTileN * sizeof(DType);
+    // **thread 0**  arrives at the mbarrier.
     mbarrier_arrive_expect_tx(&mbarrier, expected_bytes);
 
-    int coord_0 = blockIdx.x * kTileM;  // N dimension (width) coordinate [0, 1]
-    int coord_1 =
-        blockIdx.y * kTileN;  // M dimension (height) coordinate [0, 1]
+    // N dimension (width) coordinate [0, 1]
+    int coord_0 = blockIdx.x * kTileM;
+    // M dimension (height) coordinate [0, 1]
+    int coord_1 = blockIdx.y * kTileN;
 
     // 3. Perform TMA load from global memory to shared memory
-    tma_copy(&tma_load_desc, &mbarrier, smem, coord_0, coord_1, 1);
-
-    printf("coords=(%d,%d), TMA load complete\n", blockIdx.y, blockIdx.x);
+    tma_load(&tma_load_desc, &mbarrier, smem, coord_0, coord_1);
   }
 
   // 4. Wait for TMA load completion - ALL threads must wait for the barrier
   __syncthreads();
 
-  // ALL threads wait for TMA barrier completion using standalone wait_barrier
-  // function The write to SMEM done by the TMA load is made visible to all
-  // threads that invoked the mbarrier wait. phase_bit = 0, all threads wait
+  // `try_wait` is a blocking operation, and **ALL threads** wait for TMA
+  // barrier completion.
+  // The write to SMEM done by the TMA load is made visible to all threads that
+  // invoked the mbarrier wait.
+  // the thread sleeps until that phase bit of the mbarrier flips.
   wait_barrier(mbarrier, 0);
 
+  // TMA store uses a memory fence to enforce memory consistency
   tma_store_fence();  // Fence before TMA store
 
   // 5. TMA Store operations
@@ -70,8 +73,6 @@ __global__ void tma_copy_kernel(
 
     // Commit the TMA store operation
     tma_store_arrive();
-
-    printf("coords=(%d,%d), TMA store complete\n", blockIdx.y, blockIdx.x);
   }
 
   // 6. Wait for all TMA store operations to complete
@@ -107,9 +108,12 @@ int main() {
     // h_src[i] = static_cast<DType>(i % 2048);
     h_dst[i] = static_cast<DType>(0.);
   }
+
+#if 0
   std::cout << "Source tensor:" << std::endl;
-  print_values<DType, kM, kN>(h_src);
+  print_values<DType, kM, kN>(h_src, 0, 256);
   std::cout << std::endl;
+#endif
 
   DType *d_src = nullptr, *d_dst = nullptr;
   CHECK_CUDA(cudaMalloc((void**)&d_src, kBytes));
@@ -127,7 +131,7 @@ int main() {
       d_src,                      // Global address
       global_dim,                 // Global dimensions
       shared_dim,                 // Shared memory dimensions (box dimensions)
-      kN * sizeof(DType),         // Global stride in bytes
+      kN,                         // Global stride in bytes
       CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
   );
 
@@ -135,7 +139,7 @@ int main() {
       d_dst,                      // Global address
       global_dim,                 // Global dimensions
       shared_dim,                 // Shared memory dimensions (box dimensions)
-      kN * sizeof(DType),         // Global stride in bytes
+      kN,                         // Global stride in bytes
       CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
   );
 
@@ -163,9 +167,11 @@ int main() {
 
   CHECK_CUDA(cudaMemcpy(h_dst, d_dst, kBytes, cudaMemcpyDeviceToHost));
 
+#if 0
   std::cout << std::endl
             << "Destination tensor (first 256 elements):" << std::endl;
   print_values<DType, kM, kN>(h_dst, 0, 256);
+#endif
 
   check_results(h_src, h_dst, kNumel);
 

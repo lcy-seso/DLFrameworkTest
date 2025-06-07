@@ -16,6 +16,19 @@
     }                                                                          \
   } while (0)
 
+// Error checking macro for CUDA driver API
+#define CHECK_CU(call)                                                \
+  do {                                                                \
+    CUresult err = call;                                              \
+    if (err != CUDA_SUCCESS) {                                        \
+      const char* error_str;                                          \
+      cuGetErrorString(err, &error_str);                              \
+      fprintf(stderr, "CUDA Driver API error in %s at line %d: %s\n", \
+              __FILE__, __LINE__, error_str);                         \
+      throw std::runtime_error(error_str);                            \
+    }                                                                 \
+  } while (0)
+
 template <int N, int D>
 constexpr int CeilDiv = (N + D - 1) / D;
 
@@ -66,7 +79,7 @@ int check_results(const DType* value1, const DType* value2, int kNumel) {
     return 1;
   }
 
-#if 1
+#if 0
   int start = 256;
   int end = start + 64;
   std::cout << "\nsrc:\n";
