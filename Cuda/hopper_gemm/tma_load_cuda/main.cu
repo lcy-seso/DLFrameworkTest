@@ -2,8 +2,6 @@
 #include "tma.cuh"
 
 #include <cuda.h>
-#include <cuda_fp8.h>
-#include <cute/tensor.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -13,7 +11,7 @@
 
 template <typename DType, const int kM, const int kN>
 void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
-  std::cout << std::fixed << std::setprecision(0);
+  std::cout << std::fixed << std::setprecision(3);
   for (int i = start; i < kM * kN; ++i) {
     std::cout << static_cast<float>(tensor[i]) << ", ";
     if ((i + 1) % 16 == 0) std::cout << std::endl;
@@ -24,65 +22,60 @@ void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
 
 template <typename DType, int kTileM, int kTileN>
 __global__ void tma_copy_kernel(
-    const __grid_constant__ CUtensorMap tma_load_desc, DType* output) {
-  // 128-byte alignment for TMA
+    const __grid_constant__ CUtensorMap tma_load_desc,
+    const __grid_constant__ CUtensorMap tma_store_desc) {
   extern __shared__ __align__(128) unsigned char buf_[];
   auto* smem = reinterpret_cast<DType*>(buf_);
   __shared__ uint64_t mbarrier;
 
   if (threadIdx.x == 0) {
-    // 0. Prefetch TMA descriptor
+    // 0. Prefetch TMA descriptors
     prefetch_tma_descriptor(&tma_load_desc);
+    prefetch_tma_descriptor(&tma_store_desc);
 
     // 1. Initialize barrier
     mbarrier_init(&mbarrier, 1);
 
-    // 2. Arrive and expect transaction size (tile_size * sizeof(float))
+    // 2. Arrive and expect transaction size (tile_size * sizeof(DType))
     uint32_t expected_bytes = kTileM * kTileN * sizeof(DType);
     mbarrier_arrive_expect_tx(&mbarrier, expected_bytes);
 
     int coord_0 = blockIdx.x * kTileM;  // N dimension (width) coordinate [0, 1]
     int coord_1 =
         blockIdx.y * kTileN;  // M dimension (height) coordinate [0, 1]
-    // 4. Perform TMA load from global memory to shared memory
+
+    // 3. Perform TMA load from global memory to shared memory
     tma_copy(&tma_load_desc, &mbarrier, smem, coord_0, coord_1, 1);
 
-    printf("coords=(%d,%d),TMA load complete\n", blockIdx.y, blockIdx.x);
+    printf("coords=(%d,%d), TMA load complete\n", blockIdx.y, blockIdx.x);
   }
 
-  // 4. Wait for TMA completion - ALL threads must wait for the barrier
+  // 4. Wait for TMA load completion - ALL threads must wait for the barrier
   __syncthreads();
 
   // ALL threads wait for TMA barrier completion using standalone wait_barrier
   // function The write to SMEM done by the TMA load is made visible to all
-  // threads that invoked the mbarrier wait
-  // phase_bit = 0, all threads wait
+  // threads that invoked the mbarrier wait. phase_bit = 0, all threads wait
   wait_barrier(mbarrier, 0);
 
-  // if(threadIdx.x == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
-  //   for(int i = 0; i < kTileM * kTileN; ++i) {
-  //     printf("%.0f, ", smem[i]);
+  tma_store_fence();  // Fence before TMA store
 
-  //     if ((i + 1) % 16 == 0) printf("\n");
-  //   }
-  //   printf("\n");
-  // }
+  // 5. TMA Store operations
+  if (threadIdx.x == 0) {
+    int coord_0 = blockIdx.x * kTileM;  // N dimension coordinate
+    int coord_1 = blockIdx.y * kTileN;  // M dimension coordinate
 
-  int tid = threadIdx.x;
-  int total_elements = kTileM * kTileN;
+    // Perform TMA store from shared memory to global memory
+    tma_store(&tma_store_desc, smem, coord_0, coord_1);
 
-  for (int i = tid; i < total_elements; i += blockDim.x) {
-    int row = i / kTileN;
-    int col = i % kTileN;
+    // Commit the TMA store operation
+    tma_store_arrive();
 
-    int global_row = blockIdx.y * kTileM + row;
-    int global_col = blockIdx.x * kTileN + col;
-    int global_idx = global_row * 256 + global_col;  // kN = 256
-
-    if (global_row < 128 && global_col < 256) {  // kM = 128, kN = 256
-      output[global_idx] = smem[i];
-    }
+    printf("coords=(%d,%d), TMA store complete\n", blockIdx.y, blockIdx.x);
   }
+
+  // 6. Wait for all TMA store operations to complete
+  tma_store_wait_group<0>();
 }
 
 int main() {
@@ -110,13 +103,13 @@ int main() {
   }
 
   for (int i = 0; i < kNumel; ++i) {
-    // h_src[i] = static_cast<DType>(rand_float());
-    h_src[i] = static_cast<DType>(i % 2048);
+    h_src[i] = static_cast<DType>(rand_float());
+    // h_src[i] = static_cast<DType>(i % 2048);
     h_dst[i] = static_cast<DType>(0.);
   }
-  // std::cout << "Source tensor:" << std::endl;
-  // print_values<DType, kM, kN>(h_src);
-  // std::cout << std::endl;
+  std::cout << "Source tensor:" << std::endl;
+  print_values<DType, kM, kN>(h_src);
+  std::cout << std::endl;
 
   DType *d_src = nullptr, *d_dst = nullptr;
   CHECK_CUDA(cudaMalloc((void**)&d_src, kBytes));
@@ -125,30 +118,26 @@ int main() {
   CHECK_CUDA(cudaMemcpy(d_src, h_src, kBytes, cudaMemcpyHostToDevice));
   CHECK_CUDA(cudaMemcpy(d_dst, h_dst, kBytes, cudaMemcpyHostToDevice));
 
-  CHECK_CU(cuInit(0));
+  TMADescriptor<DType> tma_desc_load;
+  TMADescriptor<DType> tma_desc_store;
+  uint64_t global_dim[2] = {kM, kN};
+  uint32_t shared_dim[2] = {kTileM, kTileN};
 
-  constexpr uint32_t rank = 2;
-  CUtensorMap tensorMap;
+  tma_desc_load.create_tma_2d_desc(
+      d_src,                      // Global address
+      global_dim,                 // Global dimensions
+      shared_dim,                 // Shared memory dimensions (box dimensions)
+      kN * sizeof(DType),         // Global stride in bytes
+      CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
+  );
 
-  uint64_t global_dim[rank] = {kM, kN};
-  uint64_t global_stride[rank - 1] = {kN * sizeof(DType)};
-  uint32_t box_dim[rank] = {kTileM, kTileN};
-  uint32_t element_stride[rank] = {1, 1};
-
-  CHECK_CU(cuTensorMapEncodeTiled(
-      &tensorMap,                          // Output tensor map
-      CU_TENSOR_MAP_DATA_TYPE_FLOAT32,     // Data type
-      rank,                                // Tensor rank (2D)
-      d_src,                               // Global address
-      global_dim,                          // Global dimensions
-      global_stride,                       // Global strides (in bytes)
-      box_dim,                             // Box dimensions
-      element_stride,                      // Element strides
-      CU_TENSOR_MAP_INTERLEAVE_NONE,       // Interleave layout
-      CU_TENSOR_MAP_SWIZZLE_NONE,          // Swizzle mode
-      CU_TENSOR_MAP_L2_PROMOTION_L2_256B,  // L2 promotion
-      CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE    // Out-of-bounds fill
-      ));
+  tma_desc_store.create_tma_2d_desc(
+      d_dst,                      // Global address
+      global_dim,                 // Global dimensions
+      shared_dim,                 // Shared memory dimensions (box dimensions)
+      kN * sizeof(DType),         // Global stride in bytes
+      CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
+  );
 
   int num_tiles_x = CeilDiv<kM, kTileM>;
   int num_tiles_y = CeilDiv<kN, kTileN>;
@@ -166,17 +155,19 @@ int main() {
   CHECK_CUDA(cudaFuncSetAttribute(
       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
 
-  kernel<<<blocks, threads, smem_size>>>(tensorMap, d_dst);
+  kernel<<<blocks, threads, smem_size>>>(tma_desc_load.get_tma_desc(),
+                                         tma_desc_store.get_tma_desc());
 
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaDeviceSynchronize());
 
   CHECK_CUDA(cudaMemcpy(h_dst, d_dst, kBytes, cudaMemcpyDeviceToHost));
 
-  std::cout << std::endl << "Destination tensor:" << std::endl;
-  print_values<DType, kM, kN>(h_dst, 0, kNumel);
+  std::cout << std::endl
+            << "Destination tensor (first 256 elements):" << std::endl;
+  print_values<DType, kM, kN>(h_dst, 0, 256);
 
-  // check_results(h_src, h_dst, kNumel);
+  check_results(h_src, h_dst, kNumel);
 
   // Cleanup
   CHECK_CUDA(cudaFree(d_src));
