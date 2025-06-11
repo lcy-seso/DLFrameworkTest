@@ -34,12 +34,12 @@ __global__ void tma_copy_kernel(
     prefetch_tma_descriptor(&tma_store_desc);
 
     // 1. Initialize barrier
-    mbarrier_init(&mbarrier, 1);
+    init_barrier(&mbarrier, 1);
 
     // 2. Arrive and expect transaction size (tile_size * sizeof(DType))
     uint32_t expected_bytes = kTileM * kTileN * sizeof(DType);
     // **thread 0**  arrives at the mbarrier.
-    mbarrier_arrive_expect_tx(&mbarrier, expected_bytes);
+    arrive_and_expect_tx(&mbarrier, expected_bytes);
 
     // N dimension (width) coordinate [0, 1]
     int coord_0 = blockIdx.x * kTileM;
@@ -58,7 +58,7 @@ __global__ void tma_copy_kernel(
   // The write to SMEM done by the TMA load is made visible to all threads that
   // invoked the mbarrier wait.
   // the thread sleeps until that phase bit of the mbarrier flips.
-  wait_barrier(mbarrier, 0);
+  wait(&mbarrier, 0);
 
   // TMA store uses a memory fence to enforce memory consistency
   tma_store_fence();  // Fence before TMA store
