@@ -77,6 +77,12 @@ struct TMADataTypeTraits<double> {  // 8 bytes
   static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_FLOAT64;
 };
 
+__device__ __forceinline__ uint32_t get_lane_id() {
+  uint32_t lane_id;
+  asm("mov.u32 %0, %laneid;" : "=r"(lane_id));
+  return lane_id;
+}
+
 template <typename DType>
 class TMADescriptor {
 public:
@@ -157,9 +163,16 @@ __host__ __device__ __forceinline__ void prefetch_tma_descriptor(
 }
 
 // Barrier management functions
-__device__ __forceinline__ void mbarrier_init(uint64_t* mbar, uint32_t count) {
-  asm volatile("mbarrier.init.shared.b64 [%0], %1;" ::"l"(mbar), "r"(count)
-               : "memory");
+__device__ __forceinline__ void init_barrier(uint64_t* barrier,
+                                             int arrive_count) {
+  uint32_t barrier_ptr =
+      static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
+  asm volatile(
+      "{\n\t"
+      "mbarrier.init.shared::cta.b64 [%1], %0; \n"
+      "}"
+      :
+      : "r"(arrive_count), "r"(barrier_ptr));
 }
 
 __device__ __forceinline__ void mbarrier_arrive_expect_tx(uint64_t* mbar,
@@ -206,6 +219,11 @@ __device__ __forceinline__ void tma_store_wait_group(uint32_t n) {
 
 __device__ __forceinline__ void tma_store_fence() {
   asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+}
+
+template <uint32_t kRegCount>
+__device__ __forceinline__ void warpgroup_reg_alloc() {
+  asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(kRegCount));
 }
 
 __device__ __forceinline__ void tma_load(void const* desc, uint64_t* barrier,

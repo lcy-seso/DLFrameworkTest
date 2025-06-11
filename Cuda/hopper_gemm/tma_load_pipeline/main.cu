@@ -20,72 +20,69 @@ void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
   }
 }
 
-template <typename DType, int kTileM, int kTileN>
-__global__ void tma_copy_kernel(
+template <typename DType, int kNumStages, int kTileM, int kTileN>
+__global__ void tma_load_pipeline(
     const __grid_constant__ CUtensorMap tma_load_desc,
     const __grid_constant__ CUtensorMap tma_store_desc) {
-  extern __shared__ __align__(128) unsigned char buf_[];
-  auto* smem = reinterpret_cast<DType*>(buf_);
-  __shared__ uint64_t mbarrier;
+  constexpr uint32_t kSmemSize = sizeof(DType) * kTileM * kTileN;
+  static_assert(kSmemSize % 1024 == 0,
+                "SMEM size must be multiples of 1024 bytes");
+  extern __shared__ __align__(1024) unsigned char buf[];
 
-  if (threadIdx.x == 0) {
-    // 0. Prefetch TMA descriptors
-    prefetch_tma_descriptor(&tma_load_desc);
-    prefetch_tma_descriptor(&tma_store_desc);
+  constexpr uint32_t kMathThreads = 128;  // two warp groups
 
-    // 1. Initialize barrier
-    init_barrier(&mbarrier, 1);
+  DType* smems[kNumStages];
+  uint64_t* full_barriers[kNumStages];
+  uint64_t* empty_barriers[kNumStages];
 
-    // 2. Arrive and expect transaction size (tile_size * sizeof(DType))
-    uint32_t expected_bytes = kTileM * kTileN * sizeof(DType);
-    // **thread 0**  arrives at the mbarrier.
-    mbarrier_arrive_expect_tx(&mbarrier, expected_bytes);
+  auto barrier_start_ptr =
+      reinterpret_cast<uint64_t*>(buf + kSmemSize * kNumStages);
 
-    // N dimension (width) coordinate [0, 1]
-    int coord_0 = blockIdx.x * kTileM;
-    // M dimension (height) coordinate [0, 1]
-    int coord_1 = blockIdx.y * kTileN;
-
-    // 3. Perform TMA load from global memory to shared memory
-    tma_load(&tma_load_desc, &mbarrier, smem, coord_0, coord_1);
+#pragma unroll
+  for (uint32_t i = 0; i < kNumStages; ++i) {
+    smems[i] = reinterpret_cast<DType*>(buf + i * kSmemSize);
+    full_barriers[i] = barrier_start_ptr + i;
+    empty_barriers[i] = barrier_start_ptr + i;
   }
 
-  // 4. Wait for TMA load completion - ALL threads must wait for the barrier
+  const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
+  const uint32_t in_group_idx = threadIdx.x % 128;
+  const uint32_t warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
+  const uint32_t lane_idx = get_lane_id();
+
+  if (threadIdx.x == kMathThreads) {
+#pragma unroll
+    for (uint32_t i = 0; i < kNumStages; ++i) {
+      // TMA thread signals `full_barriers`. since there is only one thread
+      // issue TMA data transfer, the arrive count for `full_barriers` is
+      // expected to be 1.
+      init_barrier(full_barriers[i], 1);
+      // one warp are used, the arrive count for `empty_barriers` is expected
+      // to be the number of warps in use for computation.
+      init_barrier(empty_barriers[i], kMathThreads / 32);
+    }
+  }
+  // Synchronize all threads to make barrier visible in normal memory model
   __syncthreads();
 
-  // `try_wait` is a blocking operation, and **ALL threads** wait for TMA
-  // barrier completion.
-  // The write to SMEM done by the TMA load is made visible to all threads that
-  // invoked the mbarrier wait.
-  // the thread sleeps until that phase bit of the mbarrier flips.
-  wait_barrier(mbarrier, 0);
-
-  // TMA store uses a memory fence to enforce memory consistency
-  tma_store_fence();  // Fence before TMA store
-
-  // 5. TMA Store operations
-  if (threadIdx.x == 0) {
-    int coord_0 = blockIdx.x * kTileM;  // N dimension coordinate
-    int coord_1 = blockIdx.y * kTileN;  // M dimension coordinate
-
-    // Perform TMA store from shared memory to global memory
-    tma_store(&tma_store_desc, smem, coord_0, coord_1);
-
-    // Commit the TMA store operation
-    tma_store_arrive();
+  if (threadIdx.x >= kMathThreads) {  // producer, TMA copy
+    warpgroup_reg_alloc<40>();
+    if (threadIdx.x == kMathThreads) {  // issue TMA copy by the leader thread
+    }
+  } else {  // consumer
+    warpgroup_reg_alloc<232>();
   }
-
-  // 6. Wait for all TMA store operations to complete
-  tma_store_wait_group<0>();
 }
 
 int main() {
   using DType = float;
+  // using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
-  static constexpr uint64_t kM = 128;     // Height (2 tiles high)
-  static constexpr uint64_t kN = 128;     // Width (2 tiles wide)
-                                          //
+  static constexpr uint64_t kM = 128;  // Height (2 tiles high)
+  static constexpr uint64_t kN = 128;  // Width (2 tiles wide)
+  static constexpr uint64_t kNumStages = 1;
+
   static constexpr uint64_t kTileM = 64;  // Tile height
   static constexpr uint64_t kTileN = 64;  // Tile width
 
@@ -145,17 +142,19 @@ int main() {
 
   int num_tiles_x = CeilDiv<kM, kTileM>;
   int num_tiles_y = CeilDiv<kN, kTileN>;
+  static constexpr int kThreads = 256;
 
   dim3 blocks(num_tiles_x, num_tiles_y, 1);
-  dim3 threads(128, 1, 1);
+  dim3 threads(kThreads, 1, 1);
 
-  int smem_size = kTileM * kTileN * sizeof(DType);
+  int smem_size = kTileM * kTileN * kNumStages * sizeof(DType) +
+                  kNumStages * sizeof(uint64_t) * 2;
 
   std::cout << "Kernel config: blocks(" << blocks.x << "," << blocks.y << ","
             << blocks.z << "), threads(" << threads.x << "," << threads.y << ","
             << threads.z << "), smem_size=" << smem_size << std::endl;
 
-  auto kernel = &tma_copy_kernel<DType, kTileM, kTileN>;
+  auto kernel = &tma_load_pipeline<DType, kNumStages, kTileM, kTileN>;
   CHECK_CUDA(cudaFuncSetAttribute(
       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
 
