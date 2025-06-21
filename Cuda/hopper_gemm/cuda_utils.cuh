@@ -32,6 +32,8 @@
 template <int N, int D>
 constexpr int CeilDiv = (N + D - 1) / D;
 
+__forceinline__ unsigned int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
 float rand_float(float a = 1e-3, float b = 1) {
   float random = ((float)rand()) / (float)RAND_MAX;
   float diff = b - a;
@@ -53,8 +55,6 @@ float rand_normal(float mean = 0.0f, float stddev = 1.0f) {
   // Scale and shift to get desired mean and standard deviation
   return mean + stddev * r;
 }
-
-__forceinline__ unsigned int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 template <typename DType>
 int check_results(const DType* value1, const DType* value2, int kNumel) {

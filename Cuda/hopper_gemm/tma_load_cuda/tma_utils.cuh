@@ -77,6 +77,12 @@ struct TMADataTypeTraits<double> {  // 8 bytes
   static constexpr CUtensorMapDataType value = CU_TENSOR_MAP_DATA_TYPE_FLOAT64;
 };
 
+__device__ __forceinline__ uint32_t get_lane_id() {
+  uint32_t lane_id;
+  asm("mov.u32 %0, %laneid;" : "=r"(lane_id));
+  return lane_id;
+}
+
 template <typename DType>
 class TMADescriptor {
 public:
@@ -157,32 +163,40 @@ __host__ __device__ __forceinline__ void prefetch_tma_descriptor(
 }
 
 // Barrier management functions
-__device__ __forceinline__ void mbarrier_init(uint64_t* mbar, uint32_t count) {
-  asm volatile("mbarrier.init.shared.b64 [%0], %1;" ::"l"(mbar), "r"(count)
-               : "memory");
+__device__ __forceinline__ void init_barrier(uint64_t* barrier,
+                                             int arrive_count) {
+  uint32_t barrier_ptr =
+      static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
+  asm volatile(
+      "{\n\t"
+      "mbarrier.init.shared::cta.b64 [%1], %0; \n"
+      "}"
+      :
+      : "r"(arrive_count), "r"(barrier_ptr));
 }
 
-__device__ __forceinline__ void mbarrier_arrive_expect_tx(uint64_t* mbar,
-                                                          uint32_t bytes) {
+__device__ __forceinline__ void arrive_and_expect_tx(uint64_t* mbar,
+                                                     uint32_t bytes) {
   asm volatile("mbarrier.arrive.expect_tx.shared.b64 _, [%0], %1;" ::"l"(mbar),
                "r"(bytes)
                : "memory");
 }
 
-__device__ __forceinline__ void wait_barrier(uint64_t& smem_barrier,
-                                             int phase_bit) {
-  uint32_t smem_int_ptr =
-      static_cast<uint32_t>(__cvta_generic_to_shared(&smem_barrier));
+__device__ __forceinline__ void wait(uint64_t* barrier, int phase) {
+  uint32_t barrier_ptr =
+      static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
+  constexpr uint32_t ticks = 0x989680;
   asm volatile(
-      "{\n"
-      ".reg .pred                P1;\n"
-      "LAB_WAIT:\n"
-      "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1;\n"
-      "@P1                       bra DONE;\n"
-      "bra                   LAB_WAIT;\n"
-      "DONE:\n"
-      "}\n" ::"r"(smem_int_ptr),
-      "r"(phase_bit));
+      "{\n\t"
+      ".reg .pred       P1; \n\t"
+      "LAB_WAIT: \n\t"
+      "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1, %2; \n\t"
+      "@P1 bra DONE; \n\t"
+      "bra     LAB_WAIT; \n\t"
+      "DONE: \n\t"
+      "}"
+      :
+      : "r"(barrier_ptr), "r"(phase), "r"(ticks));
 }
 
 __device__ __forceinline__ void tma_store_arrive() {
@@ -206,6 +220,11 @@ __device__ __forceinline__ void tma_store_wait_group(uint32_t n) {
 
 __device__ __forceinline__ void tma_store_fence() {
   asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+}
+
+template <uint32_t kRegCount>
+__device__ __forceinline__ void warpgroup_reg_alloc() {
+  asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(kRegCount));
 }
 
 __device__ __forceinline__ void tma_load(void const* desc, uint64_t* barrier,
@@ -235,6 +254,17 @@ __device__ __forceinline__ void tma_load(void const* desc, uint64_t* barrier,
   (void)crd_0;
   (void)crd_1;
 #endif
+}
+
+__device__ __forceinline__ void arrive(uint64_t const* barrier) {
+  uint32_t barrier_ptr =
+      static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
+  asm volatile(
+      "{\n\t"
+      "mbarrier.arrive.shared::cta.b64 _, [%0];\n\t"
+      "}"
+      :
+      : "r"(barrier_ptr));
 }
 
 __device__ __forceinline__ void tma_store(void const* desc, void* smem,
