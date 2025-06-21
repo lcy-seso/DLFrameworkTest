@@ -129,10 +129,13 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
 
             tma_load(&tma_desc_a, full_barriers[s], smem_a[s], idx,
                      m_block_idx * kTM);
-            tma_load(&tma_desc_b, full_barriers[s], smem_b[s], idx,
-                     n_block_idx * kTN);
+            arrive_and_expect_tx(full_barriers[s], KeTraits::kSizeA);
 
-            arrive_and_expect_tx(full_barriers[s], KeTraits::kExpectedTmaBytes);
+            // tma_load(&tma_desc_b, full_barriers[s], smem_b[s], idx,
+            //          n_block_idx * kTN);
+
+            // arrive_and_expect_tx(full_barriers[s],
+            // KeTraits::kExpectedTmaBytes);
           }
         }
       }
