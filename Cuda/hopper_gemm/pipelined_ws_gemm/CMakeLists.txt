@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25.0)
-project(tma_load_pipeline LANGUAGES CXX CUDA)
+project(pipelined_gemm LANGUAGES CXX CUDA)
 
 set(CMAKE_BUILD_TYPE Release)
 
@@ -41,8 +41,8 @@ include_directories("${PROJECT_SOURCE_DIR}/../")
 include_directories("${PROJECT_SOURCE_DIR}/../tma_load_cuda")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
-add_executable(tma_load_pipeline main.cu)
-set_target_properties(tma_load_pipeline PROPERTIES CUDA_ARCHITECTURES 90a)
+add_executable(pipelined_gemm main.cu)
+set_target_properties(pipelined_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
 
 # Link against CUDA driver library for cuTensorMapEncodeTiled
-target_link_libraries(tma_load_pipeline PRIVATE CUDA::cuda_driver)
+target_link_libraries(pipelined_gemm PRIVATE CUDA::cuda_driver)

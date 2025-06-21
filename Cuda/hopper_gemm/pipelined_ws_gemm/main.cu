@@ -41,11 +41,15 @@ int main() {
   thrust::host_vector<DType> h_b(kN * kK);
   thrust::host_vector<DType> h_c(kM * kN);
 
-  for (int i = 0; i < h_a.size(); ++i)
-    h_a[i] = static_cast<DType>(rand_float());
+  for (int i = 0; i < h_a.size(); ++i) {
+    h_a[i] = static_cast<DType>(i % 1024);
+    // h_a[i] = static_cast<DType>(rand_float());
+  }
 
-  for (int i = 0; i < h_b.size(); ++i)
-    h_b[i] = static_cast<DType>(rand_float());
+  for (int i = 0; i < h_b.size(); ++i) {
+    h_b[i] = static_cast<DType>(i % 1024);
+    // h_b[i] = static_cast<DType>(rand_float());
+  }
 
   thrust::fill(h_c.begin(), h_c.end(), 0.);
   CHECK_CUDA(cudaDeviceSynchronize());
@@ -58,6 +62,7 @@ int main() {
   TMADescriptor<DType> tma_desc_b;
   TMADescriptor<DType> tma_desc_c;
 
+  // operand A is laid out in row-major order
   uint64_t global_dim_a[2] = {kM, kK};
   uint32_t shared_dim_a[2] = {kTM, kTK};
   tma_desc_a.create_tma_2d_desc(
@@ -68,8 +73,9 @@ int main() {
       CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
   );
 
-  uint64_t global_dim_b[2] = {kN, kK};
-  uint32_t shared_dim_b[2] = {kTN, kTK};
+  // operand B is laid out in column-major order
+  uint64_t global_dim_b[2] = {kK, kN};
+  uint32_t shared_dim_b[2] = {kTK, kTN};
   tma_desc_b.create_tma_2d_desc(
       thrust::raw_pointer_cast(d_b.data()),  // Global address
       global_dim_b,                          // Global dimensions
@@ -78,6 +84,7 @@ int main() {
       CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
   );
 
+  // operand C is laid out in row-major order
   uint64_t global_dim_c[2] = {kM, kN};
   uint32_t shared_dim_c[2] = {kTM, kTN};
   tma_desc_c.create_tma_2d_desc(
@@ -94,6 +101,9 @@ int main() {
 
   dim3 blocks(num_sms, 1);
   dim3 threads(Traits::kThreads, 1, 1);
+
+  std::cout << "num_sms: " << num_sms << std::endl;
+  std::cout << "threads: " << threads.x << std::endl;
 
   auto kernel = &hopper_gemm<DType, Traits>;
   CHECK_CUDA(cudaFuncSetAttribute(kernel,
