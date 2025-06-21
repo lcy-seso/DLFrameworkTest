@@ -224,6 +224,11 @@ __device__ __forceinline__ void tma_store_fence() {
 
 template <uint32_t kRegCount>
 __device__ __forceinline__ void warpgroup_reg_alloc() {
+  asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;\n" : : "n"(kRegCount));
+}
+
+template <uint32_t kRegCount>
+__device__ __forceinline__ void warpgroup_reg_dealloc() {
   asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;\n" : : "n"(kRegCount));
 }
 

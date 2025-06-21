@@ -21,11 +21,9 @@ struct GemmTraits {
   static constexpr int kNumStages = kNumStages_;
 
   // the size of shared memory for each operand and result
-  static constexpr int kSizeA = kTM * kTK * kNumStages * sizeof(DType);
-  static constexpr int kSizeB = kTN * kTK * kNumStages * sizeof(DType);
+  static constexpr int kSizeA = kTM * kTK * sizeof(DType);
+  static constexpr int kSizeB = kTN * kTK * sizeof(DType);
   static constexpr int kSizeC = kTM * kTN * sizeof(DType);
-
-  static constexpr int kExpectedTmaBytes = (kTM + kTN) * kTK * sizeof(DType);
 
   static_assert(kSizeC % 1024 == 0,
                 "Shared memory of output tensor must be aligned to 1024 bytes");
@@ -34,12 +32,12 @@ struct GemmTraits {
   static_assert(kSizeB % 1024 == 0,
                 "Shared memory of operand B must be aligned to 1024 bytes");
 
-  static constexpr int kSharedDataSize = kSizeA + kSizeB + kSizeC;
+  static constexpr int kSharedDataSize =
+      (kSizeA + kSizeB) * kNumStages + kSizeC;
+  static constexpr int kSharedMemSize =  // data + barriers
+      kSharedDataSize + kNumStages * sizeof(uint64_t) * 2;
 
-  // full_barriers and empty_barriers
-  static constexpr int kSharedBarriersSize = kNumStages * sizeof(uint64_t) * 2;
-
-  static constexpr int kSharedMemSize = kSharedDataSize + kSharedBarriersSize;
+  static constexpr int kExpectedTmaBytes = kSizeA + kSizeB;
 
   static constexpr uint32_t kKShapeAllStages = kNumStages * kTK;
   static constexpr uint32_t kKNumIterations = CeilDiv<kK, kKShapeAllStages>;
@@ -62,7 +60,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   static constexpr int kTM = KeTraits::kTM;
   static constexpr int kTN = KeTraits::kTN;
   static constexpr int kTK = KeTraits::kTK;
-  extern __shared__ __align__(1024) unsigned char buf[];
+  extern __shared__ __align__(1024) uint8_t buf[];
 
   DType* smem_a[kNumStages];
   DType* smem_b[kNumStages];
@@ -75,7 +73,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   auto barrier_start_ptr =
       reinterpret_cast<uint64_t*>(buf + KeTraits::kSharedDataSize);
   auto a_ptr = smem_c + KeTraits::kSizeC;
-  auto b_ptr = a_ptr + KeTraits::kSizeA;
+  auto b_ptr = a_ptr + KeTraits::kSizeA * kNumStages;
 #pragma unroll
   for (uint32_t i = 0; i < kNumStages; ++i) {
     smem_a[i] = a_ptr + i * KeTraits::kSizeA;
@@ -86,7 +84,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   }
 
   const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
-  // const uint32_t in_group_idx = threadIdx.x % 128;
+  const uint32_t in_group_idx = threadIdx.x % 128;
   const uint32_t warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
   const uint32_t lane_idx = get_lane_id();
 
@@ -105,9 +103,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       // issue TMA data transfer, the arrive count for `full_barriers` is
       // expected to be 1.
       init_barrier(full_barriers[i], 1);
-      // one warp are used, the arrive count for `empty_barriers` is expected
-      // to be the number of warps in use for computation.
-      init_barrier(empty_barriers[i], KeTraits::kMathThreads / 32);
+      init_barrier(empty_barriers[i], KeTraits::kMathThreads / 128);
     }
   }
   // Synchronize all threads to make barrier visible in normal memory model
@@ -116,7 +112,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   uint32_t m_block_idx, n_block_idx, idx;
   typename KeTraits::Scheduler_ scheduler;
   if (threadIdx.x >= KeTraits::kMathThreads) {  // producer, TMA copy
-    warpgroup_reg_alloc<40>();
+    warpgroup_reg_dealloc<40>();
     if (threadIdx.x == KeTraits::kMathThreads) {  // the leader thread
       while (scheduler.get_next_block(m_block_idx, n_block_idx)) {
         for (uint32_t k = 0; k < KeTraits::kKNumIterations; ++k) {
@@ -140,7 +136,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
           }
         }
       }
-    } else {  // consumer
+    } else {  // consumer, wgmma
       warpgroup_reg_alloc<232>();
     }
   }
