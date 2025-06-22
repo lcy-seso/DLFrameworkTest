@@ -2,6 +2,12 @@
 
 cd build
 
+exe_name="pipelined_gemm"
+
+if [ -f $exe_name ]; then
+  rm $exe_name
+fi
+
 # if [ -f CMakeCache.txt ]; then
 #   rm CMakeCache.txt
 # fi
@@ -14,6 +20,10 @@ cd build
 
 make 2>&1 | tee ../build.log
 
-cd ../
+if [ -f $exe_name ]; then
+  ./$exe_name 2>&1 | tee ../run.log
+else
+  echo "build failed."
+fi
 
-./build/pipelined_gemm 2>&1 | tee run.log
+cd ../

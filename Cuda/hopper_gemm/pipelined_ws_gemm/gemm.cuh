@@ -48,6 +48,11 @@ struct GemmTraits {
   // thread kMathThreads ~ kThreads - 1: producer
   static constexpr uint32_t kMathThreads = 128;
 
+  // register reconfigurations
+  static constexpr uint32_t kNumTMARegisters = 40;
+  static constexpr uint32_t kNumMathRegisters = 232;
+
+  // tile scheduler
   using Scheduler_ = Scheduler<kM, kN, kTM, kTN, kNumTmaMulticast>;
 };
 
@@ -84,7 +89,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   }
 
   const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
-  const uint32_t in_group_idx = threadIdx.x % 128;
+  // const uint32_t in_group_idx = threadIdx.x % 128;
   const uint32_t warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
   const uint32_t lane_idx = get_lane_id();
 
@@ -97,7 +102,6 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   __syncwarp();
 
   if (threadIdx.x == KeTraits::kMathThreads) {  // the leader thread
-
 #pragma unroll
     for (uint32_t i = 0; i < kNumStages; ++i) {
       // TMA thread signals `full_barriers`. since there is only one thread
@@ -113,13 +117,16 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   uint32_t m_block_idx, n_block_idx, idx;
   typename KeTraits::Scheduler_ scheduler;
   if (threadIdx.x >= KeTraits::kMathThreads) {  // producer, TMA copy
-    warpgroup_reg_dealloc<40>();
-    if (threadIdx.x == KeTraits::kMathThreads) {  // the leader thread
+    warpgroup_reg_dealloc<KeTraits::kNumTMARegisters>();
+
+    if (threadIdx.x == KeTraits::kMathThreads) {  // the lead thread issues TMA
       while (scheduler.get_next_block(m_block_idx, n_block_idx)) {
         for (uint32_t k = 0; k < KeTraits::kKNumIterations; ++k) {
+          // Wait consumer release the barrier
+          idx = scheduler.current_iter * KeTraits::kKNumIterations + k + 1;
+
 #pragma unroll
           for (uint32_t s = 0; s < kNumStages; ++s) {
-            idx = scheduler.current_iter * KeTraits::kKNumIterations + k + 1;
             // phase bit is 0 if idx is even, 1 if idx is odd.
             // by adding 1 to idx, the phase calculation becomes 1, 0, 1 and so
             // on.
@@ -133,15 +140,16 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
               continue;
             }
 
+            tma_load(&tma_desc_a, full_barriers[s], smem_a[s], idx,
+                     m_block_idx * kTM);
             tma_load(&tma_desc_b, full_barriers[s], smem_b[s], idx,
                      n_block_idx * kTN);
-
             arrive_and_expect_tx(full_barriers[s], KeTraits::kExpectedTmaBytes);
           }
         }
       }
     } else {  // consumer, wgmma
-      warpgroup_reg_alloc<232>();
+      warpgroup_reg_alloc<KeTraits::kNumMathRegisters>();
     }
   }
 }
