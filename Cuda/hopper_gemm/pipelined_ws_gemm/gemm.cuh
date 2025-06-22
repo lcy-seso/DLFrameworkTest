@@ -97,6 +97,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   __syncwarp();
 
   if (threadIdx.x == KeTraits::kMathThreads) {  // the leader thread
+
 #pragma unroll
     for (uint32_t i = 0; i < kNumStages; ++i) {
       // TMA thread signals `full_barriers`. since there is only one thread
@@ -119,16 +120,19 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
 #pragma unroll
           for (uint32_t s = 0; s < kNumStages; ++s) {
             idx = scheduler.current_iter * KeTraits::kKNumIterations + k + 1;
+            // phase bit is 0 if idx is even, 1 if idx is odd.
+            // by adding 1 to idx, the phase calculation becomes 1, 0, 1 and so
+            // on.
             wait(empty_barriers[s], idx & 1);
 
             idx = k * KeTraits::kKShapeAllStages + s * kTK;
             if (idx >= KeTraits::kK) {
+              // increase the arrive counters when tiles along the K dimension
+              // are all completed.
               arrive(full_barriers[s]);
               continue;
             }
 
-            tma_load(&tma_desc_a, full_barriers[s], smem_a[s], idx,
-                     m_block_idx * kTM);
             tma_load(&tma_desc_b, full_barriers[s], smem_b[s], idx,
                      n_block_idx * kTN);
 
