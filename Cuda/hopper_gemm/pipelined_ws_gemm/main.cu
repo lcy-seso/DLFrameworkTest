@@ -23,22 +23,21 @@ void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
 }
 
 int main() {
-  using DType = float;
-  // using DType = __nv_bfloat16;
+  using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
   static constexpr uint64_t kM = 256;
   static constexpr uint64_t kN = 128;
   static constexpr uint64_t kK = 128;
 
-  static constexpr uint64_t kTM = 64;
+  static constexpr uint64_t kTM = 32;
   static constexpr uint64_t kTN = 64;
   static constexpr uint64_t kTK = 64;
 
   using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK>;
 
   thrust::host_vector<DType> h_a(kM * kK);
-  thrust::host_vector<DType> h_b(kN * kK);
+  thrust::host_vector<DType> h_b(kK * kN);
   thrust::host_vector<DType> h_c(kM * kN);
 
   for (int i = 0; i < h_a.size(); ++i) {
@@ -51,7 +50,7 @@ int main() {
     // h_b[i] = static_cast<DType>(rand_float());
   }
 
-  thrust::fill(h_c.begin(), h_c.end(), 0.);
+  thrust::fill(h_c.begin(), h_c.end(), static_cast<DType>(0));
   CHECK_CUDA(cudaDeviceSynchronize());
 
   thrust::device_vector<DType> d_a = h_a;
@@ -104,6 +103,9 @@ int main() {
 
   std::cout << "num_sms: " << num_sms << std::endl;
   std::cout << "threads: " << threads.x << std::endl;
+  std::cout << "shared memory size: " << Traits::kSharedMemSize << std::endl;
+  std::cout << "shared memory per block: " << deviceProp.sharedMemPerBlock
+            << std::endl;
 
   auto kernel = &hopper_gemm<DType, Traits>;
   CHECK_CUDA(cudaFuncSetAttribute(kernel,

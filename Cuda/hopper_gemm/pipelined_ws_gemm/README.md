@@ -10,7 +10,7 @@ The `wait` operation uses the token you give it to ask the hardware a simple que
 
 If the answer is "yes," the wait succeeds. If "no," the thread keeps waiting.
 
-But in the [implementation](../tma_load_cuda/tma_utils.cuh), ptx instruction used in the `arrive` operation uses the sink symbol `_`:
+But in the [implementation](https://github.com/lcy-seso/DLFrameworkTest/blob/master/Cuda/hopper_gemm/tma_load_cuda/tma_utils.cuh#L219), ptx instruction used in the `arrive` operation uses the sink symbol `_`:
 
 ```cpp
 asm volatile(
@@ -23,7 +23,7 @@ asm volatile(
 
 It means that the `arrive` operation is not retrieving a phase token.
 
-Additionally, in the `wait` operation, we can see that: instead of passing a 64-bit state token, an immediate integer: 0 (for even) or 1 (for odd) is passed to tell the hardware the parity value directly.
+Additionally, in the [`wait` operation](https://github.com/lcy-seso/DLFrameworkTest/blob/master/Cuda/hopper_gemm/tma_load_cuda/tma_utils.cuh#L198), we can see that: instead of passing a 64-bit state token, an immediate integer: 0 (for even) or 1 (for odd) is passed to tell the hardware the parity value directly.
 
 Note that the thread calling `arrive` with `_` is not the same thread that will be calling `wait`. This is a classic Producer-Consumer pattern, also known as a **Signaler-Waiter** pattern.
 
@@ -33,7 +33,10 @@ Let's break down the roles:
 
     - **Job**: To perform a task (like copying data from global to shared memory) and then signal to other threads that the task is complete.
     - **Action**: It calls `mbarrier.arrive.shared::cta.b64 _, [%barrier_addr];`.
-    - **Why it uses `_`**: The signaler's job is done after it raises the flag. It doesn't need to wait for anyone else. It might go on to do other work or simply terminate. It has no use for the phase token, so it discards it for efficiency. It is purely producing a signal.
+    
+    <ins>***Why it uses the sink symbol `_` ?***</ins>
+    
+    The signaler's job is done after it raises the flag. It doesn't need to wait for anyone else. It might go on to do other work or simply terminate. It has no use for the phase token, so it discards it for efficiency. It is purely producing a signal.
 
     The TMA units are hardware producers; their software-controlled part simply needs to arrive at a barrier to indicate "the data you asked for is now in shared memory."
 
@@ -41,7 +44,10 @@ Let's break down the roles:
 
     - **Job**: To wait until a certain condition is met (e.g., data is ready in shared memory) before it can start its own work (like performing matrix multiplications).
     - **Action**: It calls `mbarrier.try_wait.parity ... [%barrier_addr], %phase_token;`.
-    - **Where its token comes from**: This is the key. The consumer's phase token does not come from the signaler's arrive call. The consumer must have acquired its token from a previous synchronization event in its own logical flow.
+    
+    <ins>***Where its token comes from ?***</ins>
+    
+    This is the key. The consumer's phase token does not come from the signaler's arrive call. The consumer must have acquired its token from a previous synchronization event in its own logical flow.
 
 ### A Concrete Example
 
