@@ -4,9 +4,23 @@
 #include "scheduler.cuh"
 #include "tma_utils.cuh"
 
+template <const int kNumTmaMulticast>
+__device__ void empty_barrier_arrive(uint64_t* empty_barrier,
+                                     uint32_t in_group_idx) {
+  if constexpr (kNumTmaMulticast == 1) {
+    if (in_group_idx == 0) {
+      arrive(empty_barrier);
+    }
+  } else {
+    if (in_group_idx < kNumTmaMulticast) {
+      arrive_cluster(empty_barrier, in_group_idx);
+    }
+  }
+}
+
 template <typename DType, const int kM_, const int kN_, const int kK_,
           const int kTM_, const int kTN_, const int kTK_,
-          const int kNumTmaMulticast_ = 1, const int kNumStages_ = 3>
+          const int kNumTmaMulticast_ = 1, const int kNumStages_ = 2>
 struct GemmTraits {
   static constexpr int kM = kM_;
   static constexpr int kN = kN_;
@@ -62,6 +76,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
                 const __grid_constant__ CUtensorMap tma_desc_b,
                 const __grid_constant__ CUtensorMap tma_desc_c) {
   static constexpr int kNumStages = KeTraits::kNumStages;
+  static constexpr int kNumTmaMulticast = KeTraits::kNumTmaMulticast;
   static constexpr int kTM = KeTraits::kTM;
   static constexpr int kTN = KeTraits::kTN;
   static constexpr int kTK = KeTraits::kTK;
@@ -79,6 +94,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       reinterpret_cast<uint64_t*>(buf + KeTraits::kSharedDataSize);
   auto a_ptr = smem_c + KeTraits::kSizeC;
   auto b_ptr = a_ptr + KeTraits::kSizeA * kNumStages;
+
 #pragma unroll
   for (uint32_t i = 0; i < kNumStages; ++i) {
     smem_a[i] = a_ptr + i * KeTraits::kSizeA;
@@ -89,7 +105,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   }
 
   const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
-  // const uint32_t in_group_idx = threadIdx.x % 128;
+  const uint32_t in_group_idx = threadIdx.x % 128;
   const uint32_t warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
   const uint32_t lane_idx = get_lane_id();
 
@@ -114,42 +130,84 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   // Synchronize all threads to make barrier visible in normal memory model
   __syncthreads();
 
-  uint32_t m_block_idx, n_block_idx, idx;
   typename KeTraits::Scheduler_ scheduler;
-  if (threadIdx.x >= KeTraits::kMathThreads) {  // producer, TMA copy
+  uint32_t m_block_idx, n_block_idx, idx;
+
+  if (threadIdx.x >= KeTraits::kMathThreads) {  // Producer, TMA copy
     warpgroup_reg_dealloc<KeTraits::kNumTMARegisters>();
 
-    if (threadIdx.x == KeTraits::kMathThreads) {  // the lead thread issues TMA
+    if (threadIdx.x == KeTraits::kMathThreads) {  // lead thread issues TMA
+
       while (scheduler.get_next_block(m_block_idx, n_block_idx)) {
         for (uint32_t k = 0; k < KeTraits::kKNumIterations; ++k) {
-          // Wait consumer release the barrier
           idx = scheduler.current_iter * KeTraits::kKNumIterations + k + 1;
 
 #pragma unroll
           for (uint32_t s = 0; s < kNumStages; ++s) {
-            // phase bit is 0 if idx is even, 1 if idx is odd.
-            // by adding 1 to idx, the phase calculation becomes 1, 0, 1 and so
-            // on.
             wait(empty_barriers[s], idx & 1);
 
-            idx = k * KeTraits::kKShapeAllStages + s * kTK;
-            if (idx >= KeTraits::kK) {
-              // increase the arrive counters when tiles along the K dimension
-              // are all completed.
+            const uint32_t k_idx = k * KeTraits::kKShapeAllStages + s * kTK;
+            if (k_idx >= KeTraits::kK) {
+              // signal shared memory buffer as "full" to unblock the consumer
+              // for the pipeline drain.
               arrive(full_barriers[s]);
               continue;
             }
 
-            tma_load(&tma_desc_a, full_barriers[s], smem_a[s], idx,
+            tma_load(&tma_desc_a, full_barriers[s], smem_a[s], k_idx,
                      m_block_idx * kTM);
-            tma_load(&tma_desc_b, full_barriers[s], smem_b[s], idx,
+            tma_load(&tma_desc_b, full_barriers[s], smem_b[s], k_idx,
                      n_block_idx * kTN);
             arrive_and_expect_tx(full_barriers[s], KeTraits::kExpectedTmaBytes);
+          }  // end of stages
+        }  // end of tile scheduler
+      }  // end of lead thread
+    }  // end of producer
+  } else {  // Consumer, WGMMA
+    warpgroup_reg_alloc<KeTraits::kNumMathRegisters>();
+    float accum[WGMMA::kNumAccums];
+
+    while (scheduler.get_next_block(m_block_idx, n_block_idx)) {
+      idx = scheduler.current_iter * KeTraits::kKNumIterations;
+
+      wait(full_barriers[0], idx & 1);
+      // TO ADD, compute wgmma stage 0 ...
+      empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[0], in_group_idx);
+
+#pragma unroll
+      for (uint32_t s = 1; s < kNumStages; ++s) {
+        wait(full_barriers[s], idx & 1);
+
+        const uint32_t k_idx = s * KeTraits::kTK;
+        if (k_idx >= KeTraits::kK) {
+          empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s],
+                                                 in_group_idx);
+          continue;
+        }
+
+        // compute wgmma stage s
+        empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s], in_group_idx);
+      }
+
+      for (uint32_t k = 1; k < KeTraits::kKNumIterations; ++k) {
+#pragma unroll
+        for (uint32_t s = 0; s < kNumStages; ++s) {
+          wait(full_barriers[s], (idx + k) & 1);
+
+          const uint32_t k_idx = k * KeTraits::kKShapeAllStages + s * kTK;
+          if (k_idx >= KeTraits::kK) {
+            empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s],
+                                                   in_group_idx);
+            continue;
           }
+
+          // compute wgmma stage s
+          empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s],
+                                                 in_group_idx);
         }
       }
-    } else {  // consumer, wgmma
-      warpgroup_reg_alloc<KeTraits::kNumMathRegisters>();
+
+      // store results
     }
   }
 }
