@@ -60,6 +60,8 @@ You'll use two barriers to manage the shared memory buffer:
 
 - `full_barrier`: Signals that the buffer is full of valid data.
 - `empty_barrier`: Signals that the buffer has been consumed and is empty.
+- Producer wait for `empty_barrier` and arrive on (signal) `full_barrier`
+- Consumer wait for `full_barrier` and arrive on (signal) `empty_barrier`
 
 Here's the dance, focusing on one buffer:
 

@@ -92,32 +92,37 @@ public:
   void create_tma_2d_desc(
       void* global_address,
       uint64_t global_dim[2],  // 2 stands for rank
-      uint32_t shared_dim[2], uint64_t global_stride,
-      CUtensorMapSwizzle swizzle = CU_TENSOR_MAP_SWIZZLE_NONE) {
+      uint32_t shared_dim[2],  //
+      uint64_t global_stride,
+      CUtensorMapSwizzle swizzle =
+          CU_TENSOR_MAP_SWIZZLE_NONE,  // CU_TENSOR_MAP_SWIZZLE_128B,
+      bool enable_l2_promotion = true) {
     assert(strides[0] % 16 == 0 && "stride must be multiples of 16 bytes");
 
     if (!is_driver_initialized) {
       CHECK_CU(cuInit(0));
       is_driver_initialized = true;
     }
+
     static constexpr uint32_t rank = 2;
     // stride in bytes
     uint64_t strides[rank - 1] = {global_stride * sizeof(DType)};
     uint32_t element_stride[rank] = {1, 1};
 
     CHECK_CU(cuTensorMapEncodeTiled(
-        &tensor_map,                         // Output tensor map
-        data_type,                           // Data type
-        rank,                                // Tensor rank (2D)
-        global_address,                      // Global address
-        global_dim,                          // Global dimensions
-        strides,                             // Global strides (in elements)
-        shared_dim,                          // Box dimensions
-        element_stride,                      // Element strides
-        CU_TENSOR_MAP_INTERLEAVE_NONE,       // Interleave layout
-        swizzle,                             // Swizzle mode
-        CU_TENSOR_MAP_L2_PROMOTION_L2_256B,  // L2 promotion
-        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE    // Out-of-bounds fill
+        &tensor_map,                    // Output tensor map
+        data_type,                      // Data type
+        rank,                           // Tensor rank (2D)
+        global_address,                 // Global address
+        global_dim,                     // Global dimensions
+        strides,                        // Global strides (in elements)
+        shared_dim,                     // Box dimensions
+        element_stride,                 // Element strides
+        CU_TENSOR_MAP_INTERLEAVE_NONE,  // Interleave layout
+        swizzle,                        // Swizzle mode
+        enable_l2_promotion ? CU_TENSOR_MAP_L2_PROMOTION_L2_256B
+                            : CU_TENSOR_MAP_L2_PROMOTION_NONE,  // L2 promotion
+        CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE  // Out-of-bounds fill
         ));
 
     is_initialized = true;
@@ -462,3 +467,21 @@ struct WGMMA {
   static constexpr int kK = 16;
   static constexpr int kNumAccums = kM * kN / 128;
 };
+
+__device__ __forceinline__ void warpgroup_arrive() {
+  asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+}
+
+__device__ __forceinline__ void warpgroup_commit_batch() {
+  asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+}
+
+__device__ __forceinline__ void warpgroup_fence_operand(float& reg) {
+  asm volatile("" : "+f"(reg)::"memory");
+}
+
+template <int N>
+__device__ __forceinline__ void warpgroup_wait() {
+  static_assert(N >= 0 and N <= 7, "WGMMA wait: N must be in range [0, 7]");
+  asm volatile("wgmma.wait_group.sync.aligned %0;\n" : : "n"(N) : "memory");
+}

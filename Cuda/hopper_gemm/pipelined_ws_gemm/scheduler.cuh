@@ -36,6 +36,7 @@ struct Scheduler {
   __device__ bool get_next_block(uint32_t& m_block_idx, uint32_t& n_block_idx) {
     const auto next_block_idx = (++current_iter) * gridDim.x + blockIdx.x;
     if (next_block_idx >= num_blocks) return false;
+
     get_swizzled_block_idx(next_block_idx, m_block_idx, n_block_idx);
     return true;
   }

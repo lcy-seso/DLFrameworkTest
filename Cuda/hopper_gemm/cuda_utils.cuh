@@ -29,10 +29,32 @@
     }                                                                 \
   } while (0)
 
+int GetMaxSharedMemoryPerBlock() {
+  int device_id;
+  CHECK_CUDA(cudaGetDevice(&device_id));
+
+  cudaDeviceProp prop;
+  CHECK_CUDA(cudaGetDeviceProperties(&prop, device_id));
+  return prop.sharedMemPerBlock;
+}
+
 template <int N, int D>
 constexpr int CeilDiv = (N + D - 1) / D;
 
 __forceinline__ unsigned int ceil_div(int a, int b) { return (a + b - 1) / b; }
+
+template <typename DType, const int kM, const int kN>
+__forceinline__ __host__ __device__ void print_values(const DType* tensor,
+                                                      int start = 256,
+                                                      int cutoff = 128) {
+  printf("\n");
+  for (int i = start; i < kM * kN; ++i) {
+    printf("%.0f, ", static_cast<float>(tensor[i]));
+    if ((i + 1) % 16 == 0) printf("\n");
+    if (i == (start + cutoff - 1)) break;
+  }
+  printf("\n");
+}
 
 float rand_float(float a = 1e-3, float b = 1) {
   float random = ((float)rand()) / (float)RAND_MAX;
