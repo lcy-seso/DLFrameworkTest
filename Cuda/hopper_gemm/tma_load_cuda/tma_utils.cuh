@@ -291,6 +291,11 @@ __device__ __forceinline__ void tma_store_wait_group(uint32_t n) {
   asm volatile("cp.async.bulk.wait_group 0;" ::: "memory");
 }
 
+template <int N>
+__device__ __forceinline__ void tma_store_wait() {
+  asm volatile("cp.async.bulk.wait_group.read %0;" : : "n"(N) : "memory");
+}
+
 __device__ __forceinline__ void tma_store_arrive() {
   asm volatile("cp.async.bulk.commit_group;" ::: "memory");
 }
@@ -357,6 +362,62 @@ __device__ __forceinline__ void tma_store(void const* desc, void* smem,
   (void)crd_0;
   (void)crd_1;
 #endif
+}
+
+union GmmaDescriptor {
+  __host__ __device__ constexpr GmmaDescriptor() noexcept : desc_(0) {}
+
+  __host__ __device__ constexpr GmmaDescriptor(uint64_t desc) noexcept
+      : desc_(desc) {}
+
+  __host__ __device__ constexpr GmmaDescriptor(GmmaDescriptor const& t) noexcept
+      : desc_(t.desc_) {}
+
+  __host__ __device__ constexpr GmmaDescriptor(GmmaDescriptor&& t) noexcept
+      : desc_(t.desc_) {}
+
+  __host__ __device__ constexpr GmmaDescriptor& operator=(
+      GmmaDescriptor const& t) noexcept {
+    desc_ = t.desc_;
+    return *this;
+  }
+
+  __host__ __device__ constexpr GmmaDescriptor& operator=(
+      GmmaDescriptor&& t) noexcept {
+    desc_ = t.desc_;
+    return *this;
+  }
+
+  uint64_t desc_;
+  uint32_t reg32_[2];
+  uint16_t reg16_[4];
+
+  struct {
+    uint16_t start_address_ : 14, : 2;
+    uint16_t leading_byte_offset_ : 14, : 2;
+    uint16_t stride_byte_offset_ : 14, : 2;
+    uint8_t : 1, base_offset_ : 3, : 4;
+    uint8_t : 6, layout_type_ : 2;
+  } bitfield;
+
+  // Decay to an `uint64_t`
+  __host__ __device__ constexpr operator uint64_t() const noexcept {
+    return desc_;
+  }
+};
+
+template <class PointerType>
+__device__ GmmaDescriptor make_k_major_smem_desc(
+    PointerType smem_ptr, int layout_type, int leading_byte_offset = 0,
+    int stride_byte_offset = 1024) {
+  GmmaDescriptor desc;
+  auto uint_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(smem_ptr));
+  desc.bitfield.start_address_ = uint_ptr >> 4;
+  desc.bitfield.layout_type_ = layout_type;
+  desc.bitfield.leading_byte_offset_ = leading_byte_offset >> 4;
+  desc.bitfield.stride_byte_offset_ = stride_byte_offset >> 4;
+  desc.bitfield.base_offset_ = 0;
+  return desc;
 }
 
 struct WGMMA {
