@@ -39,18 +39,18 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
   uint64_t* empty_barriers[kNumStages];
 
   // shared memory data pointers for each operand and output
+  auto a_ptr = smem_c + KeTraits::kShapeC;
+  auto b_ptr = a_ptr + KeTraits::kShapeA;
+
   auto barrier_start_ptr =
       reinterpret_cast<uint64_t*>(buf + KeTraits::kSharedDataSize);
-  auto a_ptr = smem_c + KeTraits::kSizeC;
-  auto b_ptr = a_ptr + KeTraits::kSizeA * kNumStages;
-
 #pragma unroll
   for (uint32_t i = 0; i < kNumStages; ++i) {
-    smem_a[i] = a_ptr + i * KeTraits::kSizeA;
-    smem_b[i] = b_ptr + i * KeTraits::kSizeB;
+    smem_a[i] = a_ptr + i * KeTraits::kShapeA;
+    smem_b[i] = b_ptr + i * KeTraits::kShapeB;
 
     full_barriers[i] = barrier_start_ptr + i;
-    empty_barriers[i] = barrier_start_ptr + i;
+    empty_barriers[i] = barrier_start_ptr + kNumStages + i;
   }
 
   const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
@@ -102,16 +102,12 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
               arrive(full_barriers[s]);
               continue;
             }
-            arrive_and_expect_tx(full_barriers[s], KeTraits::kSizeA);
 
+            arrive_and_expect_tx(full_barriers[s], KeTraits::kExpectedTmaBytes);
             tma_load(&tma_desc_a, full_barriers[s], smem_a[s], k_idx,
                      m_block_idx * kTM);
-
-            // tma_load(&tma_desc_b, full_barriers[s], smem_b[s], k_idx,
-            //          n_block_idx * kTN);
-
-            // arrive_and_expect_tx(full_barriers[s],
-            // KeTraits::kExpectedTmaBytes);
+            tma_load(&tma_desc_b, full_barriers[s], smem_b[s], k_idx,
+                     n_block_idx * kTN);
           }  // end of stages
         }  // end of tile scheduler
       }  // end of lead thread
@@ -124,16 +120,6 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       idx = scheduler.current_iter * KeTraits::kKNumIterations;
 
       wait(full_barriers[0], idx & 1);  // phase bit 0, 1, 0, 1, ...
-
-      // if (threadIdx.x == 0 && blockIdx.x == 0) {
-      //   printf("\nShared tile stage-0:\n");
-      //   for (int i = 0; i < 8; ++i) {
-      //     for (int j = 0; j < 64; ++j) {
-      //       printf("%.0f, ", static_cast<float>(smem_a[0][i * 64 + j]));
-      //     }
-      //     printf("\n");
-      //   }
-      // }
 
       // TO ADD, compute wgmma stage 0 ...
       empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[0]);

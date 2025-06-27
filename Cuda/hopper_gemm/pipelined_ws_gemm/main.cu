@@ -24,10 +24,14 @@ struct GemmTraits {
 
   static constexpr int kNumStages = kNumStages_;
 
+  static constexpr int kShapeA = kTM * kTK;
+  static constexpr int kShapeB = kTK * kTN;
+  static constexpr int kShapeC = kTM * kTN;
+
   // the size of shared memory for each operand and result
-  static constexpr int kSizeA = kTM * kTK * sizeof(DType);
-  static constexpr int kSizeB = kTN * kTK * sizeof(DType);
-  static constexpr int kSizeC = kTM * kTN * sizeof(DType);
+  static constexpr int kSizeA = kShapeA * sizeof(DType);
+  static constexpr int kSizeB = kShapeB * sizeof(DType);
+  static constexpr int kSizeC = kShapeC * sizeof(DType);
 
   static_assert(kSizeC % 1024 == 0,
                 "Shared memory of output tensor must be aligned to 1024 bytes");
@@ -48,7 +52,7 @@ struct GemmTraits {
   static_assert(kK % kKShapeAllStages == 0,
                 "kK must be divisible by kKShapeAllStages");
 
-  static constexpr uint32_t kKNumIterations = CeilDiv<kK, kKShapeAllStages>;
+  static constexpr uint32_t kKNumIterations = CEIL_DIV(kK, kKShapeAllStages);
 
   static constexpr uint32_t kNumWarpGroup = 2;
   static constexpr uint32_t kThreads = 128 * kNumWarpGroup;
@@ -69,15 +73,15 @@ int main() {
   using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
-  static constexpr uint64_t kM = 64;
-  static constexpr uint64_t kN = 64;
-  static constexpr uint64_t kK = 128;
+  static constexpr uint64_t kM = 640;
+  static constexpr uint64_t kN = 4096;
+  static constexpr uint64_t kK = 1280;
 
   static constexpr uint64_t kTM = 64;
   static constexpr uint64_t kTN = 64;
   static constexpr uint64_t kTK = 64;
 
-  static constexpr int kNumStages = 1;
+  static constexpr int kNumStages = 4;
   using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK, kNumStages>;
 
   /// create data
@@ -91,17 +95,18 @@ int main() {
   }
   thrust::device_vector<DType> d_a = h_a;
 
-  // print_values<DType, kM, kK>(h_a.data(), 0, kM * kK);
-
   for (int i = 0; i < h_b.size(); ++i) {
-    h_b[i] = static_cast<DType>(i % 256);
-    // h_b[i] = static_cast<DType>(rand_float());
+    // Initialize matrix B in column-major order
+    // For column-major: element (i,j) is at index i + j * kK
+    int row = i % kK;
+    int col = i / kK;
+    h_b[i] = static_cast<DType>((row + col * kK) % 256);
   }
   thrust::device_vector<DType> d_b = h_b;
 
   thrust::fill(h_c.begin(), h_c.end(), static_cast<DType>(0));
   thrust::device_vector<DType> d_c = h_c;
-  CHECK_CUDA(cudaDeviceSynchronize());
+  CudaCheck(cudaDeviceSynchronize());
 
   //// create TMA descriptors
   // operand A is laid out in row-major order
@@ -123,7 +128,7 @@ int main() {
       thrust::raw_pointer_cast(d_b.data()),  // Global address
       global_dim_b,                          // Global dimensions
       shared_dim_b,  // Shared memory dimensions (box dimensions)
-      kK             // Global stride in bytes
+      kK             // Global stride in bytes (distance between columns)
   );
 
   // operand C is laid out in row-major order
@@ -155,16 +160,16 @@ int main() {
   auto kernel = &hopper_gemm<DType, Traits>;
 
   if (Traits::kSharedMemSize > GetMaxSharedMemoryPerBlock()) {
-    CHECK_CUDA(cudaFuncSetAttribute(kernel,
-                                    cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                    Traits::kSharedMemSize));
+    CudaCheck(cudaFuncSetAttribute(kernel,
+                                   cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                   Traits::kSharedMemSize));
   }
 
   kernel<<<blocks, threads, Traits::kSharedMemSize>>>(
       tma_desc_a.get_tma_desc(), tma_desc_b.get_tma_desc(),
       tma_desc_c.get_tma_desc());
 
-  CHECK_CUDA(cudaGetLastError());
-  CHECK_CUDA(cudaDeviceSynchronize());
+  CudaCheck(cudaGetLastError());
+  CudaCheck(cudaDeviceSynchronize());
   return 0;
 }

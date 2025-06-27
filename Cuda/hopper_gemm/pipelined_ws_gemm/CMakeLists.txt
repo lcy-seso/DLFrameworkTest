@@ -38,11 +38,13 @@ list(APPEND CUDA_NVCC_FLAGS ${ARCH_LIST})
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-gencode arch=compute_90a,code=sm_90a")
 
 include_directories("${PROJECT_SOURCE_DIR}/../")
+include_directories("${PROJECT_SOURCE_DIR}/../../")
 include_directories("${PROJECT_SOURCE_DIR}/../tma_load_cuda")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
-add_executable(pipelined_gemm main.cu)
+add_executable(pipelined_gemm main.cu ../../curand_fp16.cu)
 set_target_properties(pipelined_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
 
 # Link against CUDA driver library for cuTensorMapEncodeTiled
 target_link_libraries(pipelined_gemm PRIVATE CUDA::cuda_driver)
+target_link_libraries(pipelined_gemm PRIVATE CUDA::curand)

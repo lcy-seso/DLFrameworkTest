@@ -5,9 +5,8 @@
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 #include <cuda_runtime.h>
-#include <cute/arch/cluster_sm90.hpp>
-#include <cute/arch/copy_sm90_tma.hpp>
-#include <cute/tensor.hpp>
+
+#include <cassert>
 
 typedef __nv_bfloat16 __bfloat16;
 typedef __nv_fp8_e4m3 __fp8_e4m3;
@@ -97,8 +96,6 @@ public:
       CUtensorMapSwizzle swizzle =
           CU_TENSOR_MAP_SWIZZLE_NONE,  // CU_TENSOR_MAP_SWIZZLE_128B,
       bool enable_l2_promotion = true) {
-    assert(strides[0] % 16 == 0 && "stride must be multiples of 16 bytes");
-
     if (!is_driver_initialized) {
       CHECK_CU(cuInit(0));
       is_driver_initialized = true;
@@ -107,6 +104,7 @@ public:
     static constexpr uint32_t rank = 2;
     // stride in bytes
     uint64_t strides[rank - 1] = {global_stride * sizeof(DType)};
+    assert(strides[0] % 16 == 0 && "stride must be multiples of 16 bytes");
     uint32_t element_stride[rank] = {1, 1};
 
     CHECK_CU(cuTensorMapEncodeTiled(
