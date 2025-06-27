@@ -1,5 +1,7 @@
 #pragma once
 
+#include "curand_fp16.h"
+
 #include <cublas_v2.h>
 #include <cuda.h>
 #include <cuda_fp16.h>
@@ -10,9 +12,19 @@
 #include <iostream>
 #include <sstream>
 
-#include "curand_fp16.h"
+#define CEIL_DIV(N, D) (((N) + (D) - 1) / (D))
 
-#define CEIL_DIV(m, n) ((m) + (n)-1) / (n)
+#define CHECK_CU(call)                                                \
+  do {                                                                \
+    CUresult err = call;                                              \
+    if (err != CUDA_SUCCESS) {                                        \
+      const char* error_str;                                          \
+      cuGetErrorString(err, &error_str);                              \
+      fprintf(stderr, "CUDA Driver API error in %s at line %d: %s\n", \
+              __FILE__, __LINE__, error_str);                         \
+      throw std::runtime_error(error_str);                            \
+    }                                                                 \
+  } while (0)
 
 inline void __cudaCheck(cudaError err, const char* file, int line) {
 #ifndef NDEBUG
@@ -138,17 +150,6 @@ void CheckDiff(const float* data1, const float* data2, int numel) {
   free(data2_cpu);
 }
 
-void InitRandomHalfs(__half* data, int N) {
-  constexpr auto rng = CURAND_RNG_PSEUDO_XORWOW;
-  curand_fp16::generator_t generator;
-  curand_fp16::create(generator, rng);
-  curand_fp16::set_seed(generator, 0);
-
-  curand_fp16::normal(generator, data, N, 1e-3, 0.05);
-
-  curand_fp16::destroy(generator);
-}
-
 void PrintHalfs(const __half* data, int64_t numel, int64_t delimiter_num = 0) {
   std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(0);
 
@@ -194,6 +195,26 @@ void PrintFloats(float* data, int numel) {
   }
 
   CudaCheck(cudaFreeHost(h_data));
+}
+
+int GetMaxSharedMemoryPerBlock() {
+  int device_id;
+  CudaCheck(cudaGetDevice(&device_id));
+
+  cudaDeviceProp prop;
+  CudaCheck(cudaGetDeviceProperties(&prop, device_id));
+  return prop.sharedMemPerBlock;
+}
+
+void InitRandomHalfs(__half* data, int N) {
+  constexpr auto rng = CURAND_RNG_PSEUDO_XORWOW;
+  curand_fp16::generator_t generator;
+  curand_fp16::create(generator, rng);
+  curand_fp16::set_seed(generator, 0);
+
+  curand_fp16::normal(generator, data, N, 1e-3, 0.05);
+
+  curand_fp16::destroy(generator);
 }
 
 void FillRandomFloats(float* data, int numel) {

@@ -21,6 +21,7 @@ cmake ../
 make 2>&1 | tee ../build.log
 
 if [ -f $exe_name ]; then
+  export CUDA_VISIBLE_DEVICES=3
   ./$exe_name 2>&1 | tee ../run.log
 else
   echo "build failed."

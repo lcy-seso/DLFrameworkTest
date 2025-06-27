@@ -1,99 +1,148 @@
 #include "cuda_utils.cuh"
 #include "gemm.cuh"
 
-#include <cuda.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
-#include <cstdio>
-#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
 
-template <typename DType, const int kM, const int kN>
-void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
-  std::cout << std::fixed << std::setprecision(3);
-  for (int i = start; i < kM * kN; ++i) {
-    std::cout << static_cast<float>(tensor[i]) << ", ";
-    if ((i + 1) % 16 == 0) std::cout << std::endl;
+template <typename DType, const int kM_, const int kN_, const int kK_,
+          const int kTM_, const int kTN_, const int kTK_,
+          const int kNumStages_ = 1, const int kNumTmaMulticast_ = 1>
+struct GemmTraits {
+  static constexpr int kM = kM_;
+  static constexpr int kN = kN_;
+  static constexpr int kK = kK_;
 
-    if (i == (start + cutoff - 1)) break;
-  }
-}
+  static constexpr int kTM = kTM_;
+  static constexpr int kTN = kTN_;
+  static constexpr int kTK = kTK_;
+
+  static constexpr int kNumTmaMulticast = kNumTmaMulticast_;
+
+  static constexpr int kNumStages = kNumStages_;
+
+  static constexpr int kShapeA = kTM * kTK;
+  static constexpr int kShapeB = kTK * kTN;
+  static constexpr int kShapeC = kTM * kTN;
+
+  // the size of shared memory for each operand and result
+  static constexpr int kSizeA = kShapeA * sizeof(DType);
+  static constexpr int kSizeB = kShapeB * sizeof(DType);
+  static constexpr int kSizeC = kShapeC * sizeof(DType);
+
+  static_assert(kSizeC % 1024 == 0,
+                "Shared memory of output tensor must be aligned to 1024 bytes");
+  static_assert(kSizeA % 1024 == 0,
+                "Shared memory of operand A must be aligned to 1024 bytes");
+  static_assert(kSizeB % 1024 == 0,
+                "Shared memory of operand B must be aligned to 1024 bytes");
+
+  static constexpr int kSharedDataSize =
+      (kSizeA + kSizeB) * kNumStages + kSizeC;
+  static constexpr int kSharedMemSize =  // data + barriers
+      kSharedDataSize + kNumStages * sizeof(uint64_t) * 2;
+
+  static constexpr int kExpectedTmaBytes = kSizeA + kSizeB;
+
+  static constexpr uint32_t kKShapeAllStages = kNumStages * kTK;
+
+  static_assert(kK % kKShapeAllStages == 0,
+                "kK must be divisible by kKShapeAllStages");
+
+  static constexpr uint32_t kKNumIterations = CEIL_DIV(kK, kKShapeAllStages);
+
+  static constexpr uint32_t kNumWarpGroup = 2;
+  static constexpr uint32_t kThreads = 128 * kNumWarpGroup;
+  // thread 0 ~ kMathThreads - 1: consumer
+  // thread kMathThreads ~ kThreads - 1: producer
+  static constexpr uint32_t kMathThreads = 128;
+
+  // register reconfigurations
+  static constexpr uint32_t kNumTMARegisters = 40;
+  static constexpr uint32_t kNumMathRegisters = 232;
+
+  // tile scheduler
+  using Scheduler_ = Scheduler<kM, kN, kTM, kTN, kNumTmaMulticast>;
+};
 
 int main() {
+  //// kernel parameters
   using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
-  static constexpr uint64_t kM = 256;
-  static constexpr uint64_t kN = 128;
-  static constexpr uint64_t kK = 128;
+  static constexpr uint64_t kM = 640;
+  static constexpr uint64_t kN = 4096;
+  static constexpr uint64_t kK = 1280;
 
-  static constexpr uint64_t kTM = 32;
+  static constexpr uint64_t kTM = 64;
   static constexpr uint64_t kTN = 64;
   static constexpr uint64_t kTK = 64;
 
-  using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK>;
+  static constexpr int kNumStages = 4;
+  using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK, kNumStages>;
 
+  /// create data
   thrust::host_vector<DType> h_a(kM * kK);
   thrust::host_vector<DType> h_b(kK * kN);
   thrust::host_vector<DType> h_c(kM * kN);
 
   for (int i = 0; i < h_a.size(); ++i) {
-    h_a[i] = static_cast<DType>(i % 1024);
+    h_a[i] = static_cast<DType>(i % 256);
     // h_a[i] = static_cast<DType>(rand_float());
   }
+  thrust::device_vector<DType> d_a = h_a;
 
   for (int i = 0; i < h_b.size(); ++i) {
-    h_b[i] = static_cast<DType>(i % 1024);
-    // h_b[i] = static_cast<DType>(rand_float());
+    // Initialize matrix B in column-major order
+    // For column-major: element (i,j) is at index i + j * kK
+    int row = i % kK;
+    int col = i / kK;
+    h_b[i] = static_cast<DType>((row + col * kK) % 256);
   }
+  thrust::device_vector<DType> d_b = h_b;
 
   thrust::fill(h_c.begin(), h_c.end(), static_cast<DType>(0));
-  CHECK_CUDA(cudaDeviceSynchronize());
-
-  thrust::device_vector<DType> d_a = h_a;
-  thrust::device_vector<DType> d_b = h_b;
   thrust::device_vector<DType> d_c = h_c;
+  CudaCheck(cudaDeviceSynchronize());
 
-  TMADescriptor<DType> tma_desc_a;
-  TMADescriptor<DType> tma_desc_b;
-  TMADescriptor<DType> tma_desc_c;
-
+  //// create TMA descriptors
   // operand A is laid out in row-major order
-  uint64_t global_dim_a[2] = {kM, kK};
-  uint32_t shared_dim_a[2] = {kTM, kTK};
+  TMADescriptor<DType> tma_desc_a;
+  uint64_t global_dim_a[2] = {kK, kM};
+  uint32_t shared_dim_a[2] = {kTK, kTM};
   tma_desc_a.create_tma_2d_desc(
       thrust::raw_pointer_cast(d_a.data()),  // Global address
       global_dim_a,                          // Global dimensions
-      shared_dim_a,               // Shared memory dimensions (box dimensions)
-      kK,                         // Global stride in bytes
-      CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
+      shared_dim_a,  // Shared memory dimensions (box dimensions)
+      kK             // Global stride in bytes
   );
 
   // operand B is laid out in column-major order
+  TMADescriptor<DType> tma_desc_b;
   uint64_t global_dim_b[2] = {kK, kN};
   uint32_t shared_dim_b[2] = {kTK, kTN};
   tma_desc_b.create_tma_2d_desc(
       thrust::raw_pointer_cast(d_b.data()),  // Global address
       global_dim_b,                          // Global dimensions
-      shared_dim_b,               // Shared memory dimensions (box dimensions)
-      kK,                         // Global stride in bytes
-      CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
+      shared_dim_b,  // Shared memory dimensions (box dimensions)
+      kK             // Global stride in bytes (distance between columns)
   );
 
   // operand C is laid out in row-major order
-  uint64_t global_dim_c[2] = {kM, kN};
-  uint32_t shared_dim_c[2] = {kTM, kTN};
+  TMADescriptor<DType> tma_desc_c;
+  uint64_t global_dim_c[2] = {kN, kM};
+  uint32_t shared_dim_c[2] = {kTN, kTM};
   tma_desc_c.create_tma_2d_desc(
       thrust::raw_pointer_cast(d_c.data()),  // Global address
       global_dim_c,                          // Global dimensions
-      shared_dim_c,               // Shared memory dimensions (box dimensions)
-      kN,                         // Global stride in bytes
-      CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
+      shared_dim_c,  // Shared memory dimensions (box dimensions)
+      kN             // Global stride in bytes
   );
 
+  //// launch kernel
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);
   uint32_t num_sms = deviceProp.multiProcessorCount;
@@ -105,18 +154,22 @@ int main() {
   std::cout << "threads: " << threads.x << std::endl;
   std::cout << "shared memory size: " << Traits::kSharedMemSize << std::endl;
   std::cout << "shared memory per block: " << deviceProp.sharedMemPerBlock
+            << std::endl
             << std::endl;
 
   auto kernel = &hopper_gemm<DType, Traits>;
-  CHECK_CUDA(cudaFuncSetAttribute(kernel,
-                                  cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                  Traits::kSharedMemSize));
+
+  if (Traits::kSharedMemSize > GetMaxSharedMemoryPerBlock()) {
+    CudaCheck(cudaFuncSetAttribute(kernel,
+                                   cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                   Traits::kSharedMemSize));
+  }
 
   kernel<<<blocks, threads, Traits::kSharedMemSize>>>(
       tma_desc_a.get_tma_desc(), tma_desc_b.get_tma_desc(),
       tma_desc_c.get_tma_desc());
 
-  CHECK_CUDA(cudaGetLastError());
-  CHECK_CUDA(cudaDeviceSynchronize());
+  CudaCheck(cudaGetLastError());
+  CudaCheck(cudaDeviceSynchronize());
   return 0;
 }

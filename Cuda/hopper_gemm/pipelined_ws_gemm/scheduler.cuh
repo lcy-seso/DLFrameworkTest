@@ -11,8 +11,8 @@ struct Scheduler {
   uint32_t num_blocks;
 
   __host__ __device__ explicit Scheduler() {
-    num_aligned_m_blocks = CeilDiv<kM, kTM>;
-    num_aligned_n_blocks = CeilDiv<kN, kTN>;
+    num_aligned_m_blocks = CEIL_DIV(kM, kTM);
+    num_aligned_n_blocks = CEIL_DIV(kN, kTN);
     num_blocks = num_aligned_m_blocks * num_aligned_n_blocks;
   }
 
@@ -36,6 +36,7 @@ struct Scheduler {
   __device__ bool get_next_block(uint32_t& m_block_idx, uint32_t& n_block_idx) {
     const auto next_block_idx = (++current_iter) * gridDim.x + blockIdx.x;
     if (next_block_idx >= num_blocks) return false;
+
     get_swizzled_block_idx(next_block_idx, m_block_idx, n_block_idx);
     return true;
   }
