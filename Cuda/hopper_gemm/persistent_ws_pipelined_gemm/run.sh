@@ -8,13 +8,13 @@ if [ -f $exe_name ]; then
   rm $exe_name
 fi
 
-if [ -f CMakeCache.txt ]; then
-  rm CMakeCache.txt
-fi
+# if [ -f CMakeCache.txt ]; then
+#   rm CMakeCache.txt
+# fi
 
-if [ -d CMakeFiles ]; then
-  rm -r CMakeFiles
-fi
+# if [ -d CMakeFiles ]; then
+#   rm -r CMakeFiles
+# fi
 
 cmake ../
 

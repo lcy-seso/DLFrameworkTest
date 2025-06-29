@@ -16,6 +16,11 @@ struct GemmTraits {
   static constexpr int kN = kN_;
   static constexpr int kK = kK_;
 
+  static_assert(kN % 8 == 0,
+                "Invalid shape N. WGMMA requires N to be divisible by 8.");
+  static_assert(kM % 64 == 0,
+                "Invalid shape M. WGMMA requires M to be divisible by 64.");
+
   static constexpr int kTM = kTM_;
   static constexpr int kTN = kTN_;
   static constexpr int kTK = kTK_;
@@ -74,14 +79,14 @@ int main() {
   // using DType = __nv_fp8_e4m3;
 
   static constexpr uint64_t kM = 640;
-  static constexpr uint64_t kN = 4096;
+  static constexpr uint64_t kN = 256;
   static constexpr uint64_t kK = 1280;
 
   static constexpr uint64_t kTM = 64;
-  static constexpr uint64_t kTN = 64;
+  static constexpr uint64_t kTN = 256;
   static constexpr uint64_t kTK = 64;
 
-  static constexpr int kNumStages = 4;
+  static constexpr int kNumStages = 2;
   using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK, kNumStages>;
 
   /// create data
@@ -153,9 +158,10 @@ int main() {
 
   std::cout << "num_sms: " << num_sms << std::endl;
   std::cout << "threads: " << threads.x << std::endl;
-  std::cout << "shared memory size: " << Traits::kSharedMemSize << std::endl;
-  std::cout << "shared memory per block: " << deviceProp.sharedMemPerBlock
-            << std::endl
+  std::cout << "shared memory size: " << Traits::kSharedMemSize / 1024 << " KB"
+            << std::endl;
+  std::cout << "shared memory per block: "
+            << deviceProp.sharedMemPerBlock / 1024 << " KB" << std::endl
             << std::endl;
 
   auto kernel = &hopper_gemm<DType, Traits>;
