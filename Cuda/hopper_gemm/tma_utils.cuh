@@ -372,3 +372,18 @@ __device__ void empty_barrier_arrive(uint64_t* empty_barrier) {
     }
   }
 }
+
+template <typename T>
+struct StoreMatrixU32x4 {
+  __device__ __forceinline__ static void copy(T src0, T src1, T src_2, T src_3,
+                                              void* smem_dst) {
+    const uint32_t src[4] = {*reinterpret_cast<uint32_t*>(&src0),
+                             *reinterpret_cast<uint32_t*>(&src1),
+                             *reinterpret_cast<uint32_t*>(&src_2),
+                             *reinterpret_cast<uint32_t*>(&src_3)};
+    asm volatile(
+        "stmatrix.sync.aligned.x4.m8n8.shared.b16 [%0], {%1, %2, %3, %4};\n" ::
+            "l"(smem_dst),
+        "r"(src[0]), "r"(src[1]), "r"(src[2]), "r"(src[3]));
+  }
+};

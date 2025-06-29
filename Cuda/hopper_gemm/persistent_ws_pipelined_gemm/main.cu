@@ -90,17 +90,18 @@ int main() {
   thrust::host_vector<DType> h_c(kM * kN);
 
   for (int i = 0; i < h_a.size(); ++i) {
-    h_a[i] = static_cast<DType>(i % 256);
-    // h_a[i] = static_cast<DType>(rand_float());
+    // h_a[i] = static_cast<DType>(i % 256);
+    h_a[i] = static_cast<DType>(rand_float());
   }
   thrust::device_vector<DType> d_a = h_a;
 
   for (int i = 0; i < h_b.size(); ++i) {
     // Initialize matrix B in column-major order
     // For column-major: element (i,j) is at index i + j * kK
-    int row = i % kK;
-    int col = i / kK;
-    h_b[i] = static_cast<DType>((row + col * kK) % 256);
+    // int row = i % kK;
+    // int col = i / kK;
+    // h_b[i] = static_cast<DType>((row + col * kK) % 256);
+    h_b[i] = static_cast<DType>(rand_float());
   }
   thrust::device_vector<DType> d_b = h_b;
 
@@ -168,8 +169,20 @@ int main() {
   kernel<<<blocks, threads, Traits::kSharedMemSize>>>(
       tma_desc_a.get_tma_desc(), tma_desc_b.get_tma_desc(),
       tma_desc_c.get_tma_desc());
+  h_c = d_c;
 
   CudaCheck(cudaGetLastError());
   CudaCheck(cudaDeviceSynchronize());
+
+  const DType* c_ptr = thrust::raw_pointer_cast(h_c.data());
+  std::cout << "dump values: " << h_c.size() << std::endl;
+  for (int i = 0; i < h_c.size(); ++i) {
+    printf("%.2f, ", __bfloat162float(c_ptr[i]));
+    if ((i + 1) % 16 == 0) printf("\n");
+
+    if (i == 127) break;
+  }
+  std::cout << std::endl;
+
   return 0;
 }

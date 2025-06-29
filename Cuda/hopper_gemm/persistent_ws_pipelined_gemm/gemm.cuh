@@ -136,6 +136,57 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       }
 
       tma_store_wait<0>();
+
+      uint32_t warp_idx = get_warp_idx();
+      uint32_t lane_idx = get_lane_id();
+      uint32_t warp_group_idx = get_warp_group_idx();
+      const uint32_t in_group_idx = threadIdx.x % 128;
+
+      asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8) : "memory");
+
+      uint32_t smem_store_offset =
+          (warp_idx * 6 + lane_idx % 16) * 32 + 8 * (lane_idx / 16);
+
+      uint32_t tma_store_smem_offset = warp_group_idx * WGMMA::kM * 32;
+      uint32_t tma_store_gmem_n = n_block_idx * KeTraits::kTN;
+      uint32_t tma_store_gmem_m =
+          m_block_idx * KeTraits::kTM + warp_group_idx * WGMMA::kM;
+
+#pragma unroll
+      for (auto j = 0; j < WGMMA::kNumAccums / 16; ++j) {
+        const auto i0 = j * 2 + 0;
+        StoreMatrixU32x4<__nv_bfloat162>::copy(
+            __float22bfloat162_rn({accum[i0 * 8 + 0], accum[i0 * 8 + 1]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 2], accum[i0 * 8 + 3]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 4], accum[i0 * 8 + 5]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 6], accum[i0 * 8 + 7]}),
+            smem_c + smem_store_offset);
+
+        const auto i1 = j * 2 + 1;
+        StoreMatrixU32x4<__nv_bfloat162>::copy(
+            __float22bfloat162_rn({accum[i1 * 8 + 0], accum[i1 * 8 + 1]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 2], accum[i1 * 8 + 3]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 4], accum[i1 * 8 + 5]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 6], accum[i1 * 8 + 7]}),
+            smem_c + smem_store_offset + 16);
+
+        smem_store_offset += KeTraits::kTM * 32;
+
+        tma_store_fence();
+        asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8)
+                     : "memory");
+
+        if (in_group_idx == 0) {
+          tma_store(&tma_desc_c, smem_c + tma_store_smem_offset,
+                    tma_store_gmem_n, tma_store_gmem_m);
+
+          tma_store_arrive();
+        }
+        __syncwarp();
+
+        tma_store_smem_offset += KeTraits::kTM * 32;
+        tma_store_gmem_n += 32;
+      }
     }
   }
 }
