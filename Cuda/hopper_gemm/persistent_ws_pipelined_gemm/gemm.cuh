@@ -95,6 +95,11 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       }  // end of lead thread
     }  // end of producer
   } else {  // Consumer, WGMMA
+    uint32_t warp_idx = get_warp_idx();
+    uint32_t lane_idx = get_lane_id();
+    uint32_t warp_group_idx = get_warp_group_idx();
+    const uint32_t in_group_idx = threadIdx.x % 128;
+
     warpgroup_reg_alloc<KeTraits::kNumMathRegisters>();
     float accum[WGMMA::kNumAccums];
 
@@ -134,18 +139,11 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
           empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s]);
         }
       }
-
       tma_store_wait<0>();
-
-      uint32_t warp_idx = get_warp_idx();
-      uint32_t lane_idx = get_lane_id();
-      uint32_t warp_group_idx = get_warp_group_idx();
-      const uint32_t in_group_idx = threadIdx.x % 128;
-
       asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8) : "memory");
 
       uint32_t smem_store_offset =
-          (warp_idx * 6 + lane_idx % 16) * 32 + 8 * (lane_idx / 16);
+          (warp_idx * 16 + lane_idx % 16) * 32 + 8 * (lane_idx / 16);
 
       uint32_t tma_store_smem_offset = warp_group_idx * WGMMA::kM * 32;
       uint32_t tma_store_gmem_n = n_block_idx * KeTraits::kTN;
@@ -172,6 +170,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
 
         smem_store_offset += KeTraits::kTM * 32;
 
+        // force warp group synchronization
         tma_store_fence();
         asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8)
                      : "memory");

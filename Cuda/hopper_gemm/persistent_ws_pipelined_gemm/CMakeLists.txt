@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25.0)
 project(pipelined_gemm LANGUAGES CXX CUDA)
 
+set(TARGET "pipelined_gemm")
+
 set(CMAKE_BUILD_TYPE Release)
 
 # Prohibit in-source builds
@@ -42,9 +44,12 @@ include_directories("${PROJECT_SOURCE_DIR}/../../")
 include_directories("${PROJECT_SOURCE_DIR}/../tma_load_cuda")
 include_directories("${THIRD_PARTY_DIR}/cutlass/include")
 
-add_executable(pipelined_gemm main.cu ../../curand_fp16.cu)
-set_target_properties(pipelined_gemm PROPERTIES CUDA_ARCHITECTURES 90a)
+add_executable(${TARGET} main.cu ../../curand_fp16.cu)
+set_target_properties(${TARGET} PROPERTIES CUDA_ARCHITECTURES 90a)
 
 # Link against CUDA driver library for cuTensorMapEncodeTiled
-target_link_libraries(pipelined_gemm PRIVATE CUDA::cuda_driver)
-target_link_libraries(pipelined_gemm PRIVATE CUDA::curand)
+target_link_libraries(${TARGET} PRIVATE CUDA::cuda_driver)
+target_link_libraries(${TARGET} PRIVATE CUDA::curand)
+target_link_libraries(${TARGET} PRIVATE CUDA::cublasLt)
+target_link_libraries(${TARGET} PRIVATE CUDA::cublas)
+target_link_libraries(${TARGET} PRIVATE CUDA::cupti)
