@@ -9,17 +9,6 @@
 #include <iostream>
 #include <stdexcept>
 
-template <typename DType, const int kM, const int kN>
-void print_values(const DType* tensor, int start = 256, int cutoff = 128) {
-  std::cout << std::fixed << std::setprecision(3);
-  for (int i = start; i < kM * kN; ++i) {
-    std::cout << static_cast<float>(tensor[i]) << ", ";
-    if ((i + 1) % 16 == 0) std::cout << std::endl;
-
-    if (i == (start + cutoff - 1)) break;
-  }
-}
-
 template <typename DType, int kTileM, int kTileN>
 __global__ void tma_copy_kernel(
     const __grid_constant__ CUtensorMap tma_load_desc,
@@ -116,11 +105,11 @@ int main() {
 #endif
 
   DType *d_src = nullptr, *d_dst = nullptr;
-  CHECK_CUDA(cudaMalloc((void**)&d_src, kBytes));
-  CHECK_CUDA(cudaMalloc((void**)&d_dst, kBytes));
+  CudaCheck(cudaMalloc((void**)&d_src, kBytes));
+  CudaCheck(cudaMalloc((void**)&d_dst, kBytes));
 
-  CHECK_CUDA(cudaMemcpy(d_src, h_src, kBytes, cudaMemcpyHostToDevice));
-  CHECK_CUDA(cudaMemcpy(d_dst, h_dst, kBytes, cudaMemcpyHostToDevice));
+  CudaCheck(cudaMemcpy(d_src, h_src, kBytes, cudaMemcpyHostToDevice));
+  CudaCheck(cudaMemcpy(d_dst, h_dst, kBytes, cudaMemcpyHostToDevice));
 
   TMADescriptor<DType> tma_desc_load;
   TMADescriptor<DType> tma_desc_store;
@@ -143,8 +132,8 @@ int main() {
       CU_TENSOR_MAP_SWIZZLE_NONE  // Swizzle mode
   );
 
-  int num_tiles_x = CeilDiv<kM, kTileM>;
-  int num_tiles_y = CeilDiv<kN, kTileN>;
+  int num_tiles_x = CEIL_DIV(kM, kTileM);
+  int num_tiles_y = CEIL_DIV(kN, kTileN);
 
   dim3 blocks(num_tiles_x, num_tiles_y, 1);
   dim3 threads(128, 1, 1);
@@ -156,16 +145,16 @@ int main() {
             << threads.z << "), smem_size=" << smem_size << std::endl;
 
   auto kernel = &tma_copy_kernel<DType, kTileM, kTileN>;
-  CHECK_CUDA(cudaFuncSetAttribute(
+  CudaCheck(cudaFuncSetAttribute(
       kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
 
   kernel<<<blocks, threads, smem_size>>>(tma_desc_load.get_tma_desc(),
                                          tma_desc_store.get_tma_desc());
 
-  CHECK_CUDA(cudaGetLastError());
-  CHECK_CUDA(cudaDeviceSynchronize());
+  CudaCheck(cudaGetLastError());
+  CudaCheck(cudaDeviceSynchronize());
 
-  CHECK_CUDA(cudaMemcpy(h_dst, d_dst, kBytes, cudaMemcpyDeviceToHost));
+  CudaCheck(cudaMemcpy(h_dst, d_dst, kBytes, cudaMemcpyDeviceToHost));
 
 #if 0
   std::cout << std::endl
@@ -176,8 +165,8 @@ int main() {
   check_results(h_src, h_dst, kNumel);
 
   // Cleanup
-  CHECK_CUDA(cudaFree(d_src));
-  CHECK_CUDA(cudaFree(d_dst));
+  CudaCheck(cudaFree(d_src));
+  CudaCheck(cudaFree(d_dst));
   free(h_src);
   free(h_dst);
 

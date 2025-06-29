@@ -3,55 +3,7 @@
 #include "cuda_utils.cuh"
 #include "scheduler.cuh"
 #include "tma_utils.cuh"
-
-namespace {
-template <const int kNumTmaMulticast>
-__device__ void empty_barrier_arrive(uint64_t* empty_barrier) {
-  const uint32_t in_group_idx = threadIdx.x % 128;
-  if constexpr (kNumTmaMulticast == 1) {
-    if (in_group_idx == 0) {
-      // NOTE: only 1 thread in the warp group arrives the empty barrier
-      arrive(empty_barrier);
-    }
-  } else {
-    if (in_group_idx < kNumTmaMulticast) {
-      arrive_cluster(empty_barrier, in_group_idx);
-    }
-  }
-}
-
-template <typename DType>
-__device__ void compute_wgmma_stage(uint32_t s, float* accum, DType* smem_a[],
-                                    DType* smem_b[], uint32_t warp_group_idx,
-                                    uint32_t kTK, bool scale_d = true) {
-  const auto smem_a_warp_group_offset = warp_group_idx * WGMMA::kM * kTK;
-
-#pragma unroll
-  for (int i = 0; i < WGMMA::kNumAccums; ++i) {
-    warpgroup_fence_operand(accum[i]);
-  }
-  warpgroup_arrive();
-
-  auto desc_a = make_k_major_smem_desc(smem_a[s] + smem_a_warp_group_offset, 1);
-  auto desc_b = make_k_major_smem_desc(smem_b[s], 1);
-  WGMMA::wgmma(desc_a, desc_b, accum, scale_d);
-
-#pragma unroll
-  for (int k = 1; k < kTK / WGMMA::kK; ++k) {
-    auto desc_a = make_k_major_smem_desc(
-        smem_a[s] + k * WGMMA::kK + smem_a_warp_group_offset, 1);
-    auto desc_b = make_k_major_smem_desc(smem_b[s] + k * WGMMA::kK, 1);
-    WGMMA::wgmma(desc_a, desc_b, accum, true);
-  }
-  warpgroup_commit_batch();
-
-#pragma unroll
-  for (int i = 0; i < WGMMA::kNumAccums; ++i) {
-    warpgroup_fence_operand(accum[i]);
-  }
-  warpgroup_wait<0>();
-}
-}  // namespace
+#include "wgmma_utils.cuh"
 
 template <typename DType, typename KeTraits>
 __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
@@ -86,10 +38,6 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
     full_barriers[i] = barrier_start_ptr + i;
     empty_barriers[i] = barrier_start_ptr + kNumStages + i;
   }
-
-  const uint32_t warp_group_idx = __shfl_sync(0xffffffff, threadIdx.x / 128, 0);
-  const uint32_t warp_idx = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
-  const uint32_t lane_idx = get_lane_id();
 
   // prefetch tma descriptors
   if (threadIdx.x == KeTraits::kMathThreads) {
@@ -154,7 +102,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
       idx = scheduler.current_iter * KeTraits::kKNumIterations;
 
       wait(full_barriers[0], idx & 1);  // phase bit 0, 1, 0, 1, ...
-      compute_wgmma_stage(0, accum, smem_a, smem_b, warp_group_idx, kTK, false);
+      compute_wgmma_stage(0, accum, smem_a, smem_b, kTK, false);
       empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[0]);
 
 #pragma unroll
@@ -167,7 +115,7 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
           continue;
         }
 
-        compute_wgmma_stage(s, accum, smem_a, smem_b, warp_group_idx, kTK);
+        compute_wgmma_stage(s, accum, smem_a, smem_b, kTK);
         empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s]);
       }
 
@@ -182,12 +130,63 @@ __global__ void __launch_bounds__(256, 1)  // minimum 1 block per SM
             continue;
           }
 
-          compute_wgmma_stage(s, accum, smem_a, smem_b, warp_group_idx, kTK);
+          compute_wgmma_stage(s, accum, smem_a, smem_b, kTK);
           empty_barrier_arrive<kNumTmaMulticast>(empty_barriers[s]);
         }
       }
 
       tma_store_wait<0>();
+
+      uint32_t warp_idx = get_warp_idx();
+      uint32_t lane_idx = get_lane_id();
+      uint32_t warp_group_idx = get_warp_group_idx();
+      const uint32_t in_group_idx = threadIdx.x % 128;
+
+      asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8) : "memory");
+
+      uint32_t smem_store_offset =
+          (warp_idx * 6 + lane_idx % 16) * 32 + 8 * (lane_idx / 16);
+
+      uint32_t tma_store_smem_offset = warp_group_idx * WGMMA::kM * 32;
+      uint32_t tma_store_gmem_n = n_block_idx * KeTraits::kTN;
+      uint32_t tma_store_gmem_m =
+          m_block_idx * KeTraits::kTM + warp_group_idx * WGMMA::kM;
+
+#pragma unroll
+      for (auto j = 0; j < WGMMA::kNumAccums / 16; ++j) {
+        const auto i0 = j * 2 + 0;
+        StoreMatrixU32x4<__nv_bfloat162>::copy(
+            __float22bfloat162_rn({accum[i0 * 8 + 0], accum[i0 * 8 + 1]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 2], accum[i0 * 8 + 3]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 4], accum[i0 * 8 + 5]}),
+            __float22bfloat162_rn({accum[i0 * 8 + 6], accum[i0 * 8 + 7]}),
+            smem_c + smem_store_offset);
+
+        const auto i1 = j * 2 + 1;
+        StoreMatrixU32x4<__nv_bfloat162>::copy(
+            __float22bfloat162_rn({accum[i1 * 8 + 0], accum[i1 * 8 + 1]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 2], accum[i1 * 8 + 3]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 4], accum[i1 * 8 + 5]}),
+            __float22bfloat162_rn({accum[i1 * 8 + 6], accum[i1 * 8 + 7]}),
+            smem_c + smem_store_offset + 16);
+
+        smem_store_offset += KeTraits::kTM * 32;
+
+        tma_store_fence();
+        asm volatile("bar.sync %0, 128;\n" ::"r"(warp_group_idx + 8)
+                     : "memory");
+
+        if (in_group_idx == 0) {
+          tma_store(&tma_desc_c, smem_c + tma_store_smem_offset,
+                    tma_store_gmem_n, tma_store_gmem_m);
+
+          tma_store_arrive();
+        }
+        __syncwarp();
+
+        tma_store_smem_offset += KeTraits::kTM * 32;
+        tma_store_gmem_n += 32;
+      }
     }
   }
 }
