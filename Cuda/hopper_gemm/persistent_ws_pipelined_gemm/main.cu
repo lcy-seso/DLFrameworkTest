@@ -81,9 +81,9 @@ int main() {
   using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
-  static constexpr uint64_t kM = 4096;
-  static constexpr uint64_t kN = 4096;
-  static constexpr uint64_t kK = 1280;
+  static constexpr uint64_t kM = 512;
+  static constexpr uint64_t kN = 2048;
+  static constexpr uint64_t kK = 1024;
 
   static constexpr uint64_t kTM = 64;
   static constexpr uint64_t kTN = 256;
@@ -209,9 +209,9 @@ int main() {
   thrust::device_vector<DType> d_c_cublas = h_c_cublas;
   CudaCheck(cudaDeviceSynchronize());
 
-  cublas(thrust::raw_pointer_cast(d_a.data()),
-         thrust::raw_pointer_cast(d_b.data()),
-         thrust::raw_pointer_cast(d_c_cublas.data()), kM, kN, kK);
+  cublas_bf16_gemm(kM, kN, kK, thrust::raw_pointer_cast(d_a.data()),
+                   thrust::raw_pointer_cast(d_b.data()),
+                   thrust::raw_pointer_cast(d_c_cublas.data()));
   h_c_cublas = d_c_cublas;
 
   {
@@ -232,6 +232,22 @@ int main() {
     const DType* c_ptr = thrust::raw_pointer_cast(h_c_cublas.data());
     for (int i = 0; i < h_c_cublas.size(); ++i) {
       printf("%.2f, ", __bfloat162float(c_ptr[i]));
+      if ((i + 1) % 16 == 0) printf("\n");
+
+      if (i == 127) break;
+    }
+    std::cout << std::endl;
+  }
+
+  {
+    std::cout << "cpu naive dump values: " << std::endl;
+    thrust::host_vector<DType> h_c_naive(kM * kN);
+    cpu_naive_gemm(kM, kN, kK, thrust::raw_pointer_cast(h_a.data()),
+                   thrust::raw_pointer_cast(h_b.data()),
+                   thrust::raw_pointer_cast(h_c_naive.data()));
+
+    for (int i = 0; i < h_c_naive.size(); ++i) {
+      printf("%.2f, ", __bfloat162float(h_c_naive[i]));
       if ((i + 1) % 16 == 0) printf("\n");
 
       if (i == 127) break;

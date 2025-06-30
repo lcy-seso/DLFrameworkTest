@@ -53,30 +53,30 @@ void cublas_hgemm(int64_t kM, int64_t kN, int64_t kK,  // problem shape
   cublasDestroy(handle);
 }
 
-void cublas(const __nv_bfloat16* A_device, const __nv_bfloat16* B_device,
-            __nv_bfloat16* C_device, int M, int N, int K) {
+void cublas_bf16_gemm(int64_t kM, int64_t kN, int64_t kK,  // problem shape
+                      const __nv_bfloat16* A, const __nv_bfloat16* B,
+                      __nv_bfloat16* C) {
   cublasLtHandle_t handle;
   cublasLtCreate(&handle);
 
   cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
 
-  // Original layouts: A (row-major M×K), B (column-major K×N), C (row-major
-  // M×N) For cuBLAS column-major: A^T (K×M), B (K×N), C^T (N×M)
-  cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16BF, K, M,
-                             K);  // A^T: K×M, stride K
-  cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16BF, K, N,
-                             K);  // B: K×N, stride K (already column-major)
-  cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16BF, N, M,
-                             N);  // C^T: N×M, stride N
+  // Original layouts:
+  //     A (row-major M×K), B (column-major K×N), C (row-major M×N)
+  // For cuBLAS column-major, we compute C^T = B^T @ A^T
+  //     [N, M] = [N, K] @ [K, M]
+  cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16BF, kK, kN, kK);
+  cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16BF, kK, kM, kK);
+  cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16BF, kN, kM, kN);
 
   cublasLtMatmulDesc_t matmul_desc;
   cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
 
-  // Compute C^T = B * A^T (equivalent to C = A * B in original layout)
-  const cublasOperation_t transa =
-      CUBLAS_OP_T;  // Transpose A (row-major → column-major)
-  const cublasOperation_t transb =
-      CUBLAS_OP_N;  // No transpose B (already column-major)
+  // For cuBLAS column-major, we compute C^T = B^T @ A^T
+  //     [N, M] = [N, K] @ [K, M]
+  // Compute C^T = B^T @ A^T
+  const cublasOperation_t transa = CUBLAS_OP_T;
+  const cublasOperation_t transb = CUBLAS_OP_N;
 
   cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA,
                                  &transa, sizeof(transa));
@@ -90,9 +90,35 @@ void cublas(const __nv_bfloat16* A_device, const __nv_bfloat16* B_device,
   float alpha = 1.0f;
   float beta = 0.0f;
 
-  cublasLtMatmul(handle, matmul_desc, &alpha, A_device, A_desc, B_device,
-                 B_desc, &beta, C_device, C_desc, C_device, C_desc, nullptr,
-                 nullptr, 0, 0);
+  size_t workspace_size = 32 * 1024 * 1024;  // 32 MiB workspace
+  void* workspace = nullptr;
+  cudaMalloc(&workspace, workspace_size);
+
+  cublasLtMatmulPreference_t preference;
+  cublasLtMatmulPreferenceCreate(&preference);
+  cublasLtMatmulPreferenceSetAttribute(preference,
+                                       CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
+                                       &workspace_size, sizeof(workspace_size));
+
+  cublasLtMatmulHeuristicResult_t heuristic_result;
+  int returned_results = 0;
+
+  cublasLtMatmulAlgoGetHeuristic(handle, matmul_desc, A_desc, B_desc, C_desc,
+                                 C_desc, preference, 1, &heuristic_result,
+                                 &returned_results);
+
+  if (returned_results == 0) {
+    std::cerr << "No algorithm found!" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  cublasLtMatmul(handle, matmul_desc,  //
+                 &alpha, B,
+                 A_desc,            // A matrix
+                 A, B_desc, &beta,  // B matrix
+                 C, C_desc,         //
+                 C, C_desc,         //
+                 &heuristic_result.algo, workspace, workspace_size, 0);
 
   cudaDeviceSynchronize();
   cublasLtMatmulDescDestroy(matmul_desc);
@@ -126,5 +152,32 @@ void check_result(const __half* h_c, const __half* h_c_ref, int kNumel) {
     std::cout << "Verification successful" << std::endl;
   } else {
     std::cout << "Verification failed" << std::endl;
+  }
+}
+
+// Naive CPU matrix multiplication: C = A * B
+// A: row-major (M×K), B: column-major (K×N), C: row-major (M×N)
+void cpu_naive_gemm(int64_t M, int64_t N, int64_t K, const __nv_bfloat16* A,
+                    const __nv_bfloat16* B, __nv_bfloat16* C) {
+  for (int64_t i = 0; i < M * N; ++i) {
+    C[i] = __float2bfloat16(0.0f);
+  }
+
+  // Compute C[i,j] = sum_k A[i,k] * B[k,j]
+  for (int64_t i = 0; i < M; ++i) {
+    for (int64_t j = 0; j < N; ++j) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; ++k) {
+        // A[i,k]: row-major layout, element at (i,k) is at index i*K + k
+        float a_val = __bfloat162float(A[i * K + k]);
+
+        // B[k,j]: column-major layout, element at (k,j) is at index k + j*K
+        float b_val = __bfloat162float(B[k + j * K]);
+
+        sum += a_val * b_val;
+      }
+      // C[i,j]: row-major layout, element at (i,j) is at index i*N + j
+      C[i * N + j] = __float2bfloat16(sum);
+    }
   }
 }
