@@ -1,5 +1,8 @@
 #include "cuda_utils.cuh"
 #include "gemm.cuh"
+#include "scheduler.cuh"
+#include "tma_utils.cuh"
+#include "utils.hpp"
 
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
@@ -15,6 +18,11 @@ struct GemmTraits {
   static constexpr int kM = kM_;
   static constexpr int kN = kN_;
   static constexpr int kK = kK_;
+
+  static_assert(kN % 8 == 0,
+                "Invalid shape N. WGMMA requires N to be divisible by 8.");
+  static_assert(kM % 64 == 0,
+                "Invalid shape M. WGMMA requires M to be divisible by 64.");
 
   static constexpr int kTM = kTM_;
   static constexpr int kTN = kTN_;
@@ -73,40 +81,56 @@ int main() {
   using DType = __nv_bfloat16;
   // using DType = __nv_fp8_e4m3;
 
-  static constexpr uint64_t kM = 640;
+  static constexpr uint64_t kM = 4096;
   static constexpr uint64_t kN = 4096;
   static constexpr uint64_t kK = 1280;
 
   static constexpr uint64_t kTM = 64;
-  static constexpr uint64_t kTN = 64;
-  static constexpr uint64_t kTK = 64;
+  static constexpr uint64_t kTN = 256;
+  static constexpr uint64_t kTK = 128;
 
-  static constexpr int kNumStages = 4;
+  static_assert(kM % 64 == 0,
+                "Invalid shape M. The current WGMMA instruction shape requires "
+                "M to be divisible by 64.");
+  static_assert(kN % 256 == 0,
+                "Invalid shape N. The current WGMMA instruction shape requires "
+                "N to be divisible by 256.");
+  static_assert(kK % (128 / sizeof(DType)) == 0,
+                "Invalid shape for K. The 128-byte access mode for shared "
+                "memory requires K to be divisible by 128 bytes.");
+
+  static constexpr int kNumStages = 2;
   using Traits = GemmTraits<DType, kM, kN, kK, kTM, kTN, kTK, kNumStages>;
 
-  /// create data
+  /// Operand A
   thrust::host_vector<DType> h_a(kM * kK);
-  thrust::host_vector<DType> h_b(kK * kN);
-  thrust::host_vector<DType> h_c(kM * kN);
-
   for (int i = 0; i < h_a.size(); ++i) {
     // h_a[i] = static_cast<DType>(i % 256);
-    h_a[i] = static_cast<DType>(rand_float());
+    // h_a[i] = static_cast<DType>(rand_float());
+
+    h_a[i] = rand_bfloat16();
   }
   thrust::device_vector<DType> d_a = h_a;
 
+  /// Operand B
+  thrust::host_vector<DType> h_b(kK * kN);
   for (int i = 0; i < h_b.size(); ++i) {
     // Initialize matrix B in column-major order
     // For column-major: element (i,j) is at index i + j * kK
     // int row = i % kK;
     // int col = i / kK;
     // h_b[i] = static_cast<DType>((row + col * kK) % 256);
-    h_b[i] = static_cast<DType>(rand_float());
+    // h_b[i] = static_cast<DType>(rand_float());
+
+    h_b[i] = rand_bfloat16();
   }
   thrust::device_vector<DType> d_b = h_b;
 
+  /// Output C
+  thrust::host_vector<DType> h_c(kM * kN);
   thrust::fill(h_c.begin(), h_c.end(), static_cast<DType>(0));
   thrust::device_vector<DType> d_c = h_c;
+
   CudaCheck(cudaDeviceSynchronize());
 
   //// create TMA descriptors
@@ -153,10 +177,15 @@ int main() {
 
   std::cout << "num_sms: " << num_sms << std::endl;
   std::cout << "threads: " << threads.x << std::endl;
-  std::cout << "shared memory size: " << Traits::kSharedMemSize << std::endl;
-  std::cout << "shared memory per block: " << deviceProp.sharedMemPerBlock
-            << std::endl
+  std::cout << "shared memory size: " << Traits::kSharedMemSize / 1024 << " KB"
             << std::endl;
+  std::cout << "shared memory per block: "
+            << deviceProp.sharedMemPerBlock / 1024 << " KB" << std::endl;
+  std::cout << "shared memory per sm: " << GetMaxSharedMemoryPerSM() / 1024
+            << " KB" << std::endl
+            << std::endl;
+
+  assert(Traits::kSharedMemSize <= GetMaxSharedMemoryPerBlock());
 
   auto kernel = &hopper_gemm<DType, Traits>;
 
@@ -174,15 +203,41 @@ int main() {
   CudaCheck(cudaGetLastError());
   CudaCheck(cudaDeviceSynchronize());
 
-  const DType* c_ptr = thrust::raw_pointer_cast(h_c.data());
-  std::cout << "dump values: " << h_c.size() << std::endl;
-  for (int i = 0; i < h_c.size(); ++i) {
-    printf("%.2f, ", __bfloat162float(c_ptr[i]));
-    if ((i + 1) % 16 == 0) printf("\n");
+  //// cublas
+  thrust::host_vector<DType> h_c_cublas(kM * kN);
+  thrust::fill(h_c_cublas.begin(), h_c_cublas.end(), static_cast<DType>(0));
+  thrust::device_vector<DType> d_c_cublas = h_c_cublas;
+  CudaCheck(cudaDeviceSynchronize());
 
-    if (i == 127) break;
+  cublas(thrust::raw_pointer_cast(d_a.data()),
+         thrust::raw_pointer_cast(d_b.data()),
+         thrust::raw_pointer_cast(d_c_cublas.data()), kM, kN, kK);
+  h_c_cublas = d_c_cublas;
+
+  {
+    std::cout << "dump values: " << std::endl;
+    const DType* c_ptr = thrust::raw_pointer_cast(h_c.data());
+
+    for (int i = 0; i < h_c.size(); ++i) {
+      printf("%.2f, ", __bfloat162float(c_ptr[i]));
+      if ((i + 1) % 16 == 0) printf("\n");
+
+      if (i == 127) break;
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
+
+  {  // ground-truth
+    std::cout << "cublas dump values: " << std::endl;
+    const DType* c_ptr = thrust::raw_pointer_cast(h_c_cublas.data());
+    for (int i = 0; i < h_c_cublas.size(); ++i) {
+      printf("%.2f, ", __bfloat162float(c_ptr[i]));
+      if ((i + 1) % 16 == 0) printf("\n");
+
+      if (i == 127) break;
+    }
+    std::cout << std::endl;
+  }
 
   return 0;
 }

@@ -8,9 +8,14 @@
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <random>
+#include <ranges>
+#include <span>
 #include <sstream>
+#include <vector>
 
 #define CEIL_DIV(N, D) (((N) + (D) - 1) / (D))
 
@@ -206,6 +211,15 @@ int GetMaxSharedMemoryPerBlock() {
   return prop.sharedMemPerBlock;
 }
 
+int GetMaxSharedMemoryPerSM() {
+  int device_id;
+  CudaCheck(cudaGetDevice(&device_id));
+
+  cudaDeviceProp prop;
+  CudaCheck(cudaGetDeviceProperties(&prop, device_id));
+  return prop.sharedMemPerMultiprocessor;
+}
+
 void InitRandomHalfs(__half* data, int N) {
   constexpr auto rng = CURAND_RNG_PSEUDO_XORWOW;
   curand_fp16::generator_t generator;
@@ -238,6 +252,15 @@ __forceinline__ __host__ __device__ void print_values(const DType* tensor,
     if (i == (start + cutoff - 1)) break;
   }
   printf("\n");
+}
+
+__nv_bfloat16 rand_bfloat16() {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::normal_distribution<float> distribution(0.0f, 0.5f);
+
+  const float rand_value = std::clamp(distribution(gen), -1.0f, 1.0f);
+  return __nv_bfloat16(rand_value);
 }
 
 float rand_float(float a = 1e-3, float b = 1) {

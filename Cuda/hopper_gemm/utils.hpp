@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cublasLt.h>
 #include <cublas_v2.h>
 
 #include <iomanip>
@@ -50,6 +51,55 @@ void cublas_hgemm(int64_t kM, int64_t kN, int64_t kK,  // problem shape
   cudaDeviceSynchronize();
 
   cublasDestroy(handle);
+}
+
+void cublas(const __nv_bfloat16* A_device, const __nv_bfloat16* B_device,
+            __nv_bfloat16* C_device, int M, int N, int K) {
+  cublasLtHandle_t handle;
+  cublasLtCreate(&handle);
+
+  cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
+
+  // Original layouts: A (row-major M×K), B (column-major K×N), C (row-major
+  // M×N) For cuBLAS column-major: A^T (K×M), B (K×N), C^T (N×M)
+  cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16BF, K, M,
+                             K);  // A^T: K×M, stride K
+  cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16BF, K, N,
+                             K);  // B: K×N, stride K (already column-major)
+  cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16BF, N, M,
+                             N);  // C^T: N×M, stride N
+
+  cublasLtMatmulDesc_t matmul_desc;
+  cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
+
+  // Compute C^T = B * A^T (equivalent to C = A * B in original layout)
+  const cublasOperation_t transa =
+      CUBLAS_OP_T;  // Transpose A (row-major → column-major)
+  const cublasOperation_t transb =
+      CUBLAS_OP_N;  // No transpose B (already column-major)
+
+  cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA,
+                                 &transa, sizeof(transa));
+  cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSB,
+                                 &transb, sizeof(transb));
+
+  cublasDataType_t scale_type = CUDA_R_32F;
+  cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_SCALE_TYPE,
+                                 &scale_type, sizeof(scale_type));
+
+  float alpha = 1.0f;
+  float beta = 0.0f;
+
+  cublasLtMatmul(handle, matmul_desc, &alpha, A_device, A_desc, B_device,
+                 B_desc, &beta, C_device, C_desc, C_device, C_desc, nullptr,
+                 nullptr, 0, 0);
+
+  cudaDeviceSynchronize();
+  cublasLtMatmulDescDestroy(matmul_desc);
+  cublasLtMatrixLayoutDestroy(A_desc);
+  cublasLtMatrixLayoutDestroy(B_desc);
+  cublasLtMatrixLayoutDestroy(C_desc);
+  cublasLtDestroy(handle);
 }
 
 void check_result(const __half* h_c, const __half* h_c_ref, int kNumel) {

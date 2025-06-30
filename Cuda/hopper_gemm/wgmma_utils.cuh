@@ -249,6 +249,7 @@ __device__ void compute_wgmma_stage(uint32_t s, float* accum, DType* smem_a[],
   for (int i = 0; i < WGMMA::kNumAccums; ++i) {
     warpgroup_fence_operand(accum[i]);
   }
+
   warpgroup_arrive();
 
   const auto smem_a_warp_group_offset = warp_group_idx * WGMMA::kM * kTK;
