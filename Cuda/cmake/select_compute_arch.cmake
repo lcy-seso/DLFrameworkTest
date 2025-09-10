@@ -110,6 +110,34 @@ if(CUDA_VERSION VERSION_GREATER "11.0")
   endif()
 endif()
 
+# Support for newer CUDA architectures (Ada Lovelace, Hopper, etc.)
+if(CUDA_VERSION VERSION_GREATER "11.8")
+  list(APPEND CUDA_KNOWN_GPU_ARCHITECTURES "Ada_Lovelace")
+  list(APPEND CUDA_COMMON_GPU_ARCHITECTURES "8.9")
+  list(APPEND CUDA_ALL_GPU_ARCHITECTURES "8.9")
+
+  if(CUDA_VERSION VERSION_LESS "12.0")
+    list(APPEND CUDA_COMMON_GPU_ARCHITECTURES "8.9+PTX")
+  endif()
+endif()
+
+if(CUDA_VERSION VERSION_GREATER "12.0")
+  list(APPEND CUDA_KNOWN_GPU_ARCHITECTURES "Hopper")
+  list(APPEND CUDA_COMMON_GPU_ARCHITECTURES "9.0")
+  list(APPEND CUDA_ALL_GPU_ARCHITECTURES "9.0")
+
+  if(CUDA_VERSION VERSION_LESS "12.5")
+    list(APPEND CUDA_COMMON_GPU_ARCHITECTURES "9.0+PTX")
+  endif()
+endif()
+
+# Support for compute capability 10.0 (Blackwell architecture)
+if(CUDA_VERSION VERSION_GREATER "12.5")
+  list(APPEND CUDA_KNOWN_GPU_ARCHITECTURES "Blackwell")
+  list(APPEND CUDA_COMMON_GPU_ARCHITECTURES "10.0")
+  list(APPEND CUDA_ALL_GPU_ARCHITECTURES "10.0")
+endif()
+
 # ##############################################################################
 # A function for automatic detection of GPUs installed  (if autodetection is
 # enabled) Usage: CUDA_DETECT_INSTALLED_GPUS(OUT_VARIABLE)
@@ -258,6 +286,15 @@ function(CUDA_SELECT_NVCC_ARCH_FLAGS out_variable)
       elseif(${arch_name} STREQUAL "Ampere")
         set(arch_bin 8.0)
         set(arch_ptx 8.0)
+      elseif(${arch_name} STREQUAL "Ada_Lovelace")
+        set(arch_bin 8.9)
+        set(arch_ptx 8.9)
+      elseif(${arch_name} STREQUAL "Hopper")
+        set(arch_bin 9.0)
+        set(arch_ptx 9.0)
+      elseif(${arch_name} STREQUAL "Blackwell")
+        set(arch_bin 10.0)
+        set(arch_ptx 10.0)
       else()
         message(
           SEND_ERROR
