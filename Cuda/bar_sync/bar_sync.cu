@@ -27,7 +27,6 @@ __device__ __forceinline__ void init_barrier(uint64_t* barrier,
 }
 
 __device__ __forceinline__ void arrive(uint64_t const* barrier) {
-  printf("tid: %d: arrive\n", threadIdx.x);
   uint32_t barrier_ptr =
       static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
   asm volatile(
@@ -39,7 +38,6 @@ __device__ __forceinline__ void arrive(uint64_t const* barrier) {
 }
 
 __device__ __forceinline__ void wait(uint64_t* barrier, int phase) {
-  printf("tid: %d: wait\n", threadIdx.x);
   uint32_t barrier_ptr =
       static_cast<uint32_t>(__cvta_generic_to_shared(barrier));
   constexpr uint32_t ticks = 0x989680;  // timeout
@@ -75,6 +73,7 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
   if (threadIdx.x == 0) {
     init_barrier(barrier_ptr, 4);
   }
+  __syncthreads();
 
   static constexpr int kBytesPerAccess = 128 / 8;
   static constexpr int kNumPerAccess = kBytesPerAccess / sizeof(DType);
@@ -82,6 +81,7 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
   // step1: load scores and bias to shared memory
   int num_load_threads = kNumel / kNumPerAccess;
   int offset = tid * kNumPerAccess;
+
   if (tid < num_load_threads) {
     ld_global_st_shared<kBytesPerAccess>(sptr_uint(scores_s + offset),
                                          scores + offset);
@@ -89,28 +89,30 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
                                          bias + offset);
   }
   block::copy_async();
+  __syncthreads();
 
   // step2 : add bias to scores using vectorized addition(128 threads)
   int compute_threads = kNumel / 2;
-
   if (tid < compute_threads) {
+    biased_scores_s[tid] = scores_s[tid] + bias_s[tid];
     bfloat162 v_scores = *reinterpret_cast<bfloat162*>(scores_s + tid * 2);
     bfloat162 v_bias = *reinterpret_cast<bfloat162*>(bias_s + tid * 2);
     bfloat162 biased_score = __hadd2(v_scores, v_bias);
+
     *reinterpret_cast<bfloat162*>(biased_scores_s + tid * 2) = biased_score;
 
     if (tid % 32 == 0) {
       arrive(barrier_ptr);
     }
   }
+  wait(barrier_ptr, 0);
 
-  wait(barrier_ptr, 1);
-
-  // step3: load biased scores to global memory
+  // step3: store biased scores to global memory
   if (tid < num_load_threads) {
     ld_shared_st_global<kBytesPerAccess>(output + offset,
                                          sptr_uint(biased_scores_s + offset));
   }
+  __syncthreads();
 }
 }  // namespace
 
@@ -157,8 +159,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  printf("Kernel execution completed successfully\n");
-
+  printf("\n\nKernel execution completed successfully\n");
   h_c = d_c;
   for (int i = 0; i < h_c.size(); ++i) {
     printf("%.2f, ", ToFloat(h_c[i]));
