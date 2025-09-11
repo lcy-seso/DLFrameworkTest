@@ -14,6 +14,22 @@ using namespace copy;
 using namespace barrier;
 namespace {
 
+__forceinline__ __device__ uint32_t smem_ptr_to_uint(void const* const ptr) {
+  return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+}
+
+__forceinline__ __device__ void fence_proxy_async() {
+  asm volatile("fence.proxy.async.shared::cta;" : :);
+}
+
+__forceinline__ __device__ void mbarrier_cp_async_arrive(
+    uint64_t& smem_barrier) {
+  uint32_t smem_int_ptr = smem_ptr_to_uint(&smem_barrier);
+  asm volatile("cp.async.mbarrier.arrive.shared.b64 [%0];"
+               :
+               : "r"(smem_int_ptr));
+}
+
 __device__ __forceinline__ void init_barrier(uint64_t* barrier,
                                              int arrive_count) {
   uint32_t barrier_ptr =
@@ -69,9 +85,10 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
   DType* biased_scores_s = bias_s + kNumel;
 
   // for barrier
-  auto barrier_ptr = reinterpret_cast<uint64_t*>(biased_scores_s + kNumel);
+  auto barriers = reinterpret_cast<uint64_t*>(biased_scores_s + kNumel);
   if (threadIdx.x == 0) {
-    init_barrier(barrier_ptr, 4);
+    init_barrier(&barriers[0], 1);
+    init_barrier(&barriers[1], 4);
   }
   __syncthreads();
 
@@ -88,8 +105,9 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
     ld_global_st_shared<kBytesPerAccess>(sptr_uint(bias_s + offset),
                                          bias + offset);
   }
-  block::copy_async();
-  __syncthreads();
+
+  // block::copy_async();
+  wait(&barriers[0], 0);
 
   // step2 : add bias to scores using vectorized addition(128 threads)
   int compute_threads = kNumel / 2;
@@ -102,17 +120,16 @@ __global__ void test_bar_sync(const bfloat16* scores, const bfloat16* bias,
     *reinterpret_cast<bfloat162*>(biased_scores_s + tid * 2) = biased_score;
 
     if (tid % 32 == 0) {
-      arrive(barrier_ptr);
+      arrive(&barriers[1]);
     }
   }
-  wait(barrier_ptr, 0);
+  wait(&barriers[1], 0);
 
   // step3: store biased scores to global memory
   if (tid < num_load_threads) {
     ld_shared_st_global<kBytesPerAccess>(output + offset,
                                          sptr_uint(biased_scores_s + offset));
   }
-  __syncthreads();
 }
 }  // namespace
 
@@ -145,7 +162,7 @@ int main(int argc, char** argv) {
   dim3 threads(kThreads, 1, 1);
 
   static constexpr int kSharedMemSize =
-      kN * sizeof(DType) * 3 + sizeof(std::uint64_t) /*mbarrier*/;
+      kN * sizeof(DType) * 3 + 2 * sizeof(std::uint64_t) /*mbarrier*/;
 
   test_bar_sync<kN><<<blocks, threads, kSharedMemSize>>>(
       thrust::raw_pointer_cast(d_a.data()),
@@ -167,13 +184,13 @@ int main(int argc, char** argv) {
     if ((i + 1) % 8 == 0) printf("\n");
   }
 
-  printf("\n\nh_c_ref: \n");
-  for (int i = 0; i < h_c.size(); ++i) {
-    printf("%.2f, ", ToFloat(h_c_ref[i]));
+  // printf("\n\nh_c_ref: \n");
+  // for (int i = 0; i < h_c.size(); ++i) {
+  //   printf("%.2f, ", ToFloat(h_c_ref[i]));
 
-    if ((i + 1) % 8 == 0) printf("\n");
-  }
-  printf("\n");
+  //   if ((i + 1) % 8 == 0) printf("\n");
+  // }
+  // printf("\n");
 
   return 0;
 }
